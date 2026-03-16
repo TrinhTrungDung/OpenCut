@@ -5,12 +5,14 @@ import type { Effect } from "@/types/effects";
 import type { BlendMode } from "@/types/rendering";
 import type { Transform } from "@/types/timeline";
 import type { ElementAnimations } from "@/types/animation";
+import type { SpeedCurvePoint } from "@/types/speed";
 import {
 	getElementLocalTime,
 	resolveOpacityAtTime,
 	resolveTransformAtTime,
 } from "@/lib/animation";
 import { resolveEffectParamsAtTime } from "@/lib/animation/effect-param-channel";
+import { resolveSourceTime } from "@/lib/speed";
 import { TIME_EPSILON_SECONDS } from "@/constants/animation-constants";
 import { getEffect } from "@/lib/effects";
 import { webglEffectRenderer } from "../webgl-effect-renderer";
@@ -25,13 +27,34 @@ export interface VisualNodeParams {
 	opacity: number;
 	blendMode?: BlendMode;
 	effects?: Effect[];
+	speed?: number;
+	speedCurve?: SpeedCurvePoint[];
+	elementId?: string;
+	sourceDuration?: number;
 }
 
 export abstract class VisualNode<
 	Params extends VisualNodeParams = VisualNodeParams,
 > extends BaseNode<Params> {
 	protected getSourceLocalTime({ time }: { time: number }): number {
-		return time - this.params.timeOffset + this.params.trimStart;
+		const timelineLocalTime = time - this.params.timeOffset;
+
+		if (
+			(this.params.speed !== undefined && this.params.speed !== 1) ||
+			this.params.speedCurve
+		) {
+			return resolveSourceTime({
+				timelineLocalTime,
+				trimStart: this.params.trimStart,
+				sourceDuration:
+					this.params.sourceDuration ?? this.params.duration,
+				speed: this.params.speed,
+				speedCurve: this.params.speedCurve,
+				elementId: this.params.elementId,
+			});
+		}
+
+		return timelineLocalTime + this.params.trimStart;
 	}
 
 	protected getAnimationLocalTime({ time }: { time: number }): number {

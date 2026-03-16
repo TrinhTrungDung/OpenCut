@@ -9,6 +9,7 @@ import { SaveManager } from "./managers/save-manager";
 import { AudioManager } from "./managers/audio-manager";
 import { SelectionManager } from "./managers/selection-manager";
 import { registerDefaultEffects } from "@/lib/effects";
+import { registerDefaultTransitions } from "@/lib/transitions";
 
 export class EditorCore {
 	private static instance: EditorCore | null = null;
@@ -26,6 +27,7 @@ export class EditorCore {
 
 	private constructor() {
 		registerDefaultEffects();
+		registerDefaultTransitions();
 		this.command = new CommandManager();
 		this.playback = new PlaybackManager(this);
 		this.timeline = new TimelineManager(this);

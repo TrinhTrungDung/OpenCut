@@ -1,0 +1,135 @@
+import type { EffectDefinition } from "@/types/effects";
+import colorCorrectionShader from "./color-correction.frag.glsl";
+import { buildColorMatrix } from "./color-matrix";
+
+export const colorCorrectionEffectDefinition: EffectDefinition = {
+	type: "color-correction",
+	name: "Color Correction",
+	keywords: [
+		"color",
+		"brightness",
+		"contrast",
+		"saturation",
+		"exposure",
+		"temperature",
+		"tint",
+		"highlights",
+		"shadows",
+		"hue",
+	],
+	params: [
+		{
+			key: "brightness",
+			label: "Brightness",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "contrast",
+			label: "Contrast",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "saturation",
+			label: "Saturation",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "exposure",
+			label: "Exposure",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "temperature",
+			label: "Temperature",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "tint",
+			label: "Tint",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "highlights",
+			label: "Highlights",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "shadows",
+			label: "Shadows",
+			type: "number",
+			default: 0,
+			min: -100,
+			max: 100,
+			step: 1,
+		},
+		{
+			key: "hueShift",
+			label: "Hue Shift",
+			type: "number",
+			default: 0,
+			min: -180,
+			max: 180,
+			step: 1,
+		},
+	],
+	renderer: {
+		type: "webgl",
+		passes: [
+			{
+				fragmentShader: colorCorrectionShader,
+				uniforms: ({ effectParams }) => {
+					const matrix = buildColorMatrix({
+						brightness: Number(effectParams.brightness ?? 0),
+						contrast: Number(effectParams.contrast ?? 0),
+						exposure: Number(effectParams.exposure ?? 0),
+						saturation: Number(effectParams.saturation ?? 0),
+					});
+					return {
+						u_colorRow0: [matrix[0], matrix[1], matrix[2], matrix[3]],
+						u_colorRow1: [matrix[4], matrix[5], matrix[6], matrix[7]],
+						u_colorRow2: [matrix[8], matrix[9], matrix[10], matrix[11]],
+						u_colorRow3: [
+							matrix[12],
+							matrix[13],
+							matrix[14],
+							matrix[15],
+						],
+						u_temperature: Number(effectParams.temperature ?? 0) / 100,
+						u_tint: Number(effectParams.tint ?? 0) / 100,
+						u_highlights: Number(effectParams.highlights ?? 0) / 100,
+						u_shadows: Number(effectParams.shadows ?? 0) / 100,
+						u_hueShift: Number(effectParams.hueShift ?? 0),
+					};
+				},
+			},
+		],
+	},
+};

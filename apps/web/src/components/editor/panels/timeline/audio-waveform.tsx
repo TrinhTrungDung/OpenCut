@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
+import { VolumeEnvelopeOverlay } from "./volume-envelope-overlay";
+import type { ElementAnimations } from "@/types/animation";
 
 interface AudioWaveformProps {
 	audioUrl?: string;
 	audioBuffer?: AudioBuffer;
 	height?: number;
 	className?: string;
+	baseVolume?: number;
+	animations?: ElementAnimations;
+	duration?: number;
+	trackId?: string;
+	elementId?: string;
 }
 
 function extractPeaks({
@@ -44,6 +51,11 @@ export function AudioWaveform({
 	audioBuffer,
 	height = 32,
 	className = "",
+	baseVolume,
+	animations,
+	duration,
+	trackId,
+	elementId,
 }: AudioWaveformProps) {
 	const waveformRef = useRef<HTMLDivElement>(null);
 	const wavesurfer = useRef<WaveSurfer | null>(null);
@@ -157,6 +169,12 @@ export function AudioWaveform({
 		);
 	}
 
+	const showOverlay =
+		baseVolume !== undefined &&
+		duration !== undefined &&
+		trackId !== undefined &&
+		elementId !== undefined;
+
 	return (
 		<div className={`relative ${className}`}>
 			{isLoading && (
@@ -169,6 +187,17 @@ export function AudioWaveform({
 				className={`w-full ${isLoading ? "opacity-0" : "opacity-100"}`}
 				style={{ height }}
 			/>
+			{showOverlay && (
+				<VolumeEnvelopeOverlay
+					baseVolume={baseVolume}
+					animations={animations}
+					duration={duration}
+					width={waveformRef.current?.clientWidth ?? 0}
+					height={height}
+					trackId={trackId}
+					elementId={elementId}
+				/>
+			)}
 		</div>
 	);
 }

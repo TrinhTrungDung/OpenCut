@@ -53,6 +53,7 @@ import {
 	KeyframeIcon,
 	MagicWand05Icon,
 } from "@hugeicons/core-free-icons";
+import { SpeedBadge } from "./speed-badge";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { uppercase } from "@/utils/string";
 import type { ComponentProps, ReactNode } from "react";
@@ -450,6 +451,8 @@ function ElementInner({
 					/>
 				</div>
 			)}
+
+			<SpeedBadge speed={element.speed} />
 
 			{isSelected && (
 				<>

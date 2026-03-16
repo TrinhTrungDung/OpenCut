@@ -1,6 +1,9 @@
 import type { ElementAnimations } from "./animation";
+import type { ColorCorrectionParams } from "./color-correction";
 import type { Effect, EffectParamValues } from "./effects";
 import type { BlendMode, Transform } from "./rendering";
+import type { SpeedCurvePoint } from "./speed";
+import type { TransitionInstance } from "./transitions";
 
 export interface Bookmark {
 	time: number;
@@ -32,6 +35,7 @@ export interface VideoTrack extends BaseTrack {
 	isMain: boolean;
 	muted: boolean;
 	hidden: boolean;
+	transitions?: TransitionInstance[];
 }
 
 export interface TextTrack extends BaseTrack {
@@ -72,6 +76,7 @@ interface BaseAudioElement extends BaseTimelineElement {
 	volume: number;
 	muted?: boolean;
 	buffer?: AudioBuffer;
+	speedCurve?: SpeedCurvePoint[];
 }
 
 export interface UploadAudioElement extends BaseAudioElement {
@@ -95,6 +100,8 @@ interface BaseTimelineElement {
 	trimEnd: number;
 	sourceDuration?: number;
 	animations?: ElementAnimations;
+	/** Playback speed multiplier (0.1-100, default 1.0) */
+	speed?: number;
 }
 
 export interface VideoElement extends BaseTimelineElement {
@@ -106,6 +113,8 @@ export interface VideoElement extends BaseTimelineElement {
 	opacity: number;
 	blendMode?: BlendMode;
 	effects?: Effect[];
+	speedCurve?: SpeedCurvePoint[];
+	colorCorrection?: ColorCorrectionParams;
 }
 
 export interface ImageElement extends BaseTimelineElement {
@@ -116,6 +125,7 @@ export interface ImageElement extends BaseTimelineElement {
 	opacity: number;
 	blendMode?: BlendMode;
 	effects?: Effect[];
+	colorCorrection?: ColorCorrectionParams;
 }
 
 export interface TextBackground {
@@ -173,7 +183,10 @@ export type VisualElement =
 export type ElementUpdatePatch =
 	| { transform: Transform }
 	| { opacity: number }
-	| { volume: number };
+	| { volume: number }
+	| { speed: number }
+	| { speedCurve: SpeedCurvePoint[] }
+	| { colorCorrection: ColorCorrectionParams };
 
 export type TimelineElement =
 	| AudioElement

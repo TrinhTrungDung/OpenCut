@@ -5,9 +5,11 @@ import type {
 	TimelineTrack,
 } from "@/types/timeline";
 import type { MediaAsset } from "@/types/assets";
+import type { ElementAnimations } from "@/types/animation";
 import { canElementHaveAudio } from "@/lib/timeline/element-utils";
 import { canTracktHaveAudio } from "@/lib/timeline";
 import { mediaSupportsAudio } from "@/lib/media/media-utils";
+import { resolveVolumeAtTime } from "@/lib/animation";
 import { Input, ALL_FORMATS, BlobSource, AudioBufferSink } from "mediabunny";
 
 const MAX_AUDIO_CHANNELS = 2;
@@ -16,7 +18,7 @@ const EXPORT_SAMPLE_RATE = 44100;
 export type CollectedAudioElement = Omit<
 	AudioElement,
 	"type" | "mediaId" | "volume" | "id" | "name" | "sourceType" | "sourceUrl"
-> & { buffer: AudioBuffer };
+> & { buffer: AudioBuffer; volume: number; animations?: ElementAnimations };
 
 export function createAudioContext({ sampleRate }: { sampleRate?: number } = {}): AudioContext {
 	const AudioContextConstructor =
@@ -95,6 +97,8 @@ export async function collectAudioElements({
 							trimStart: element.trimStart,
 							trimEnd: element.trimEnd,
 							muted: element.muted || isTrackMuted,
+							volume: element.volume,
+							animations: element.animations,
 						};
 					}),
 				);
@@ -119,6 +123,8 @@ export async function collectAudioElements({
 							trimStart: element.trimStart,
 							trimEnd: element.trimEnd,
 							muted: elementMuted || isTrackMuted,
+							volume: 1,
+							animations: element.animations,
 						};
 					}),
 				);
@@ -552,7 +558,14 @@ function mixAudioChannels({
 			const sourceIndex = sourceStartSample + Math.floor(i / resampleRatio);
 			if (sourceIndex >= sourceData.length) break;
 
-			outputData[outputIndex] += sourceData[sourceIndex];
+			const localTime = (i / resampleRatio) / buffer.sampleRate;
+			const volume = resolveVolumeAtTime({
+				baseVolume: element.volume,
+				animations: element.animations,
+				localTime,
+			});
+
+			outputData[outputIndex] += sourceData[sourceIndex] * volume;
 		}
 	}
 }

@@ -1,6 +1,7 @@
 import type { EditorCore } from "@/core";
 import type { AudioClipSource } from "@/lib/media/audio";
 import { createAudioContext, collectAudioClips } from "@/lib/media/audio";
+import { resolveVolumeAtTime } from "@/lib/animation/resolve";
 import {
 	ALL_FORMATS,
 	AudioBufferSink,
@@ -25,6 +26,7 @@ export class AudioManager {
 		string,
 		AsyncGenerator<WrappedAudioBuffer, void, unknown>
 	>();
+	private clipGains = new Map<string, GainNode>();
 	private queuedSources = new Set<AudioBufferSourceNode>();
 	private playbackSessionId = 0;
 	private lastIsPlaying = false;
@@ -139,6 +141,22 @@ export class AudioManager {
 		this.masterGain.gain.value = this.lastVolume;
 	}
 
+	private getOrCreateClipGain({
+		clipId,
+		audioContext,
+	}: {
+		clipId: string;
+		audioContext: AudioContext;
+	}): GainNode {
+		let gain = this.clipGains.get(clipId);
+		if (!gain) {
+			gain = audioContext.createGain();
+			gain.connect(this.masterGain ?? audioContext.destination);
+			this.clipGains.set(clipId, gain);
+		}
+		return gain;
+	}
+
 	private getPlaybackTime(): number {
 		if (!this.audioContext) return this.playbackStartTime;
 		const elapsed =
@@ -221,6 +239,11 @@ export class AudioManager {
 			source.disconnect();
 		}
 		this.queuedSources.clear();
+
+		for (const gain of this.clipGains.values()) {
+			gain.disconnect();
+		}
+		this.clipGains.clear();
 	}
 
 	private async runClipIterator({
@@ -257,6 +280,11 @@ export class AudioManager {
 		this.clipIterators.set(clip.id, iterator);
 		let consecutiveDroppedBufferCount = 0;
 
+		const clipGain = this.getOrCreateClipGain({
+			clipId: clip.id,
+			audioContext,
+		});
+
 		for await (const { buffer, timestamp } of iterator) {
 			if (!this.editor.playback.getIsPlaying()) return;
 			if (sessionId !== this.playbackSessionId) return;
@@ -266,12 +294,26 @@ export class AudioManager {
 
 			const node = audioContext.createBufferSource();
 			node.buffer = buffer;
-			node.connect(this.masterGain ?? audioContext.destination);
+			node.connect(clipGain);
 
 			const startTimestamp =
 				this.playbackStartContextTime +
 				this.playbackLatencyCompensationSeconds +
 				(timelineTime - this.playbackStartTime);
+
+			// Schedule per-clip volume from keyframe animation
+			const localTime = timelineTime - clip.startTime;
+			const clipAny = clip as AudioClipSource & {
+				volume?: number;
+				animations?: unknown;
+			};
+			const volume = resolveVolumeAtTime({
+				baseVolume: clipAny.volume ?? 1,
+				animations: clipAny.animations as Parameters<typeof resolveVolumeAtTime>[0]["animations"],
+				localTime,
+			});
+			const audioTime = Math.max(startTimestamp, audioContext.currentTime);
+			clipGain.gain.setValueAtTime(Math.max(0.0001, volume), audioTime);
 
 			if (startTimestamp >= audioContext.currentTime) {
 				node.start(startTimestamp);
@@ -357,6 +399,11 @@ export class AudioManager {
 		}
 		this.clipIterators.clear();
 		this.activeClipIds.clear();
+
+		for (const gain of this.clipGains.values()) {
+			gain.disconnect();
+		}
+		this.clipGains.clear();
 
 		for (const input of this.inputs.values()) {
 			input.dispose();

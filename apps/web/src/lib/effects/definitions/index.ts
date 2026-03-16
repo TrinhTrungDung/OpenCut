@@ -1,7 +1,8 @@
 import { hasEffect, registerEffect } from "../registry";
 import { blurEffectDefinition } from "./blur";
+import { colorCorrectionEffectDefinition } from "./color-correction";
 
-const defaultEffects = [blurEffectDefinition];
+const defaultEffects = [blurEffectDefinition, colorCorrectionEffectDefinition];
 
 export function registerDefaultEffects(): void {
 	for (const definition of defaultEffects) {

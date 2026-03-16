@@ -80,6 +80,10 @@ function buildTrackNodes({
 							opacity: element.opacity,
 							blendMode: element.blendMode,
 							effects: element.effects,
+							speed: element.speed,
+							speedCurve: element.type === "video" ? element.speedCurve : undefined,
+							elementId: element.id,
+							sourceDuration: element.sourceDuration,
 						}),
 					);
 				}
@@ -96,6 +100,9 @@ function buildTrackNodes({
 							opacity: element.opacity,
 							blendMode: element.blendMode,
 							effects: element.effects,
+							speed: element.speed,
+							elementId: element.id,
+							sourceDuration: element.sourceDuration,
 							...(isPreview && {
 								maxSourceSize: PREVIEW_MAX_IMAGE_SIZE,
 							}),

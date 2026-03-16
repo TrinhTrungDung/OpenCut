@@ -160,6 +160,23 @@ export const ACTIONS = {
 		description: "Analyze video with AI",
 		category: "ai",
 	},
+	"freeze-frame": {
+		description: "Create freeze frame at playhead",
+		category: "editing",
+	},
+	"set-speed": {
+		description: "Set element speed",
+		category: "editing",
+		args: { speed: "number" },
+	},
+	"apply-transition": {
+		description: "Apply transition between clips",
+		category: "editing",
+	},
+	"remove-transition": {
+		description: "Remove transition",
+		category: "editing",
+	},
 } as const satisfies Record<string, TActionDefinition>;
 
 export type TAction = keyof typeof ACTIONS;
