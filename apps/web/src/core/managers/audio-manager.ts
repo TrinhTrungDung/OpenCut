@@ -322,8 +322,9 @@ export class AudioManager {
 				consecutiveDroppedBufferCount = 0;
 			} else {
 				const offset = audioContext.currentTime - startTimestamp;
-				if (offset < buffer.duration) {
-					node.start(audioContext.currentTime, offset);
+				const effectiveBufferDuration = buffer.duration / clipSpeed;
+				if (offset < effectiveBufferDuration) {
+					node.start(audioContext.currentTime, offset * clipSpeed);
 					consecutiveDroppedBufferCount = 0;
 				} else {
 					console.debug(`[AudioManager] Dropped buffer: offset=${offset.toFixed(3)}s behind`);

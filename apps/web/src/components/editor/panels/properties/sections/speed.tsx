@@ -16,6 +16,7 @@ import {
 import { SpeedCurveEditor } from "../speed-curve-editor";
 import type { SpeedCurvePoint } from "@/types/speed";
 import { DEFAULT_SPEED, MIN_SPEED, MAX_SPEED } from "@/types/speed";
+import { computeDisplayDuration } from "@/lib/speed";
 import type { ElementType } from "@/types/timeline";
 
 type SpeedElement = {
@@ -25,6 +26,9 @@ type SpeedElement = {
 	speedCurve?: SpeedCurvePoint[];
 	startTime: number;
 	duration: number;
+	sourceDuration?: number;
+	trimStart: number;
+	trimEnd: number;
 };
 
 const SPEED_PRESETS = [
@@ -62,12 +66,19 @@ export function SpeedSection({
 
 	const updateSpeed = (newSpeed: number) => {
 		const clamped = clamp({ value: newSpeed, min: MIN_SPEED, max: MAX_SPEED });
+		const srcDuration = element.sourceDuration ?? (element.duration * (element.speed ?? 1));
+		const newDuration = computeDisplayDuration({
+			sourceDuration: srcDuration,
+			trimStart: element.trimStart,
+			trimEnd: element.trimEnd,
+			speed: clamped,
+		});
 		editor.timeline.updateElements({
 			updates: [
 				{
 					trackId,
 					elementId: element.id,
-					updates: { speed: clamped },
+					updates: { speed: clamped, duration: newDuration, sourceDuration: srcDuration },
 				},
 			],
 		});
@@ -84,16 +95,7 @@ export function SpeedSection({
 	};
 
 	const handleScrub = (value: number) => {
-		const clamped = clamp({ value, min: MIN_SPEED, max: MAX_SPEED });
-		editor.timeline.updateElements({
-			updates: [
-				{
-					trackId,
-					elementId: element.id,
-					updates: { speed: clamped },
-				},
-			],
-		});
+		updateSpeed(value);
 	};
 
 	const handleCurveChange = (points: SpeedCurvePoint[]) => {
