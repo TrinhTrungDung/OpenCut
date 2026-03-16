@@ -122,7 +122,7 @@ export function Captions() {
 
 		const result = await transcriptionService.transcribe({
 			audioData: samples,
-			language: selectedLanguage === "auto" ? undefined : selectedLanguage,
+			language: selectedLanguage === "auto" ? undefined : selectedLanguage as TranscriptionLanguage,
 			onProgress: handleProgress,
 		});
 

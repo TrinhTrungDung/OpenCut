@@ -421,8 +421,10 @@ function ElementInner({
 						: undefined
 				}
 			>
-				<button
-					type="button"
+				{/* biome-ignore lint/a11y/useKeyWithClickEvents: interaction handled by parent button */}
+				<div
+					role="button"
+					tabIndex={-1}
 					className="absolute inset-0 size-full cursor-pointer flex flex-col"
 					onClick={(event) => {
 						closeClipEffects();
@@ -437,7 +439,7 @@ function ElementInner({
 							isSelected={isSelected}
 						/>
 					</div>
-				</button>
+				</div>
 			</div>
 
 			{element.type !== "audio" && element.type !== "effect" && (

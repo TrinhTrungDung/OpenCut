@@ -37,7 +37,7 @@ export function AIAnalysisView() {
 		// Find first video asset
 		const assets = editor.media.getAssets();
 		const videoAsset = assets.find((a) => a.type === "video");
-		if (!videoAsset) {
+		if (!videoAsset || !videoAsset.url) {
 			setError("No video asset found. Import a video to analyze.");
 			return;
 		}
@@ -66,7 +66,7 @@ export function AIAnalysisView() {
 
 	const handleSeek = useCallback(
 		(time: number) => {
-			editor.playback.seek(time);
+			editor.playback.seek({ time });
 		},
 		[editor],
 	);
