@@ -107,13 +107,11 @@ export class AudioManager {
 		this.stopPlayback();
 	};
 
-	/** Fingerprint of current audio clip structure for change detection */
-	private lastClipFingerprint = "";
+	/** Fingerprints for detecting what changed */
+	private lastStructureFingerprint = "";
+	private lastSpeedFingerprint = "";
 
 	private handleTimelineChange = (): void => {
-		/* Only restart audio when the audio-relevant structure actually changes
-		   (clips added/removed/muted/repositioned). Skip restarts for property-only
-		   changes like speed, effects, or color correction to avoid audio clicking. */
 		if (this.timelineChangeTimer) {
 			clearTimeout(this.timelineChangeTimer);
 		}
@@ -121,34 +119,68 @@ export class AudioManager {
 			this.timelineChangeTimer = null;
 			if (!this.editor.playback.getIsPlaying()) return;
 
-			const fingerprint = this.computeClipFingerprint();
-			if (fingerprint === this.lastClipFingerprint) return;
-			this.lastClipFingerprint = fingerprint;
+			const { structure, speed } = this.computeFingerprints();
+			const structureChanged = structure !== this.lastStructureFingerprint;
+			const speedChanged = speed !== this.lastSpeedFingerprint;
 
-			this.disposeSinks();
-			void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
+			if (!structureChanged && !speedChanged) return;
+
+			this.lastStructureFingerprint = structure;
+			this.lastSpeedFingerprint = speed;
+
+			if (structureChanged) {
+				/* Clips added/removed/muted/repositioned — full rebuild */
+				this.disposeSinks();
+				void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
+			} else {
+				/* Only speed changed — keep sinks, just reschedule with fade */
+				this.softRestart();
+			}
 		}, 300);
 	};
 
 	/**
-	 * Build a fingerprint from audio-relevant properties.
-	 * Includes speed so audio restarts with correct playbackRate after
-	 * speed changes are committed. Preview-mode changes are debounced
-	 * and throttled at the UI layer so this won't fire during scrub.
+	 * Restart playback without destroying sinks. Fades out current
+	 * sources over a short ramp to avoid click, then reschedules.
 	 */
-	private computeClipFingerprint(): string {
+	private softRestart(): void {
+		const audioContext = this.audioContext;
+		if (!audioContext || !this.masterGain) return;
+
+		/* Ramp master gain to 0 over 30ms to avoid click */
+		const now = audioContext.currentTime;
+		this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+		this.masterGain.gain.linearRampToValueAtTime(0, now + 0.03);
+
+		/* After the ramp, stop old sources and restart */
+		setTimeout(() => {
+			this.stopPlayback();
+			if (!this.masterGain) return;
+			this.masterGain.gain.cancelScheduledValues(0);
+			this.masterGain.gain.value = this.lastVolume;
+			if (!this.editor.playback.getIsPlaying()) return;
+			void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
+		}, 35);
+	}
+
+	/** Separate structural fingerprint (needs full rebuild) from speed (soft restart) */
+	private computeFingerprints(): { structure: string; speed: string } {
 		const tracks = this.editor.timeline.getTracks();
-		const parts: string[] = [];
+		const structureParts: string[] = [];
+		const speedParts: string[] = [];
 		for (const track of tracks) {
 			const muted = "muted" in track && track.muted;
 			for (const el of track.elements) {
 				if (el.type !== "audio" && el.type !== "video") continue;
 				const elMuted = "muted" in el ? el.muted : false;
-				const elSpeed = el.speed ?? 1;
-				parts.push(`${el.id}:${el.startTime}:${el.trimStart}:${muted || elMuted}:${elSpeed}`);
+				structureParts.push(`${el.id}:${el.startTime}:${el.trimStart}:${muted || elMuted}`);
+				speedParts.push(`${el.id}:${el.speed ?? 1}`);
 			}
 		}
-		return parts.join("|");
+		return {
+			structure: structureParts.join("|"),
+			speed: speedParts.join("|"),
+		};
 	}
 
 	private ensureAudioContext(): AudioContext | null {
@@ -215,7 +247,9 @@ export class AudioManager {
 		this.clips = await collectAudioClips({ tracks, mediaAssets });
 		if (!this.editor.playback.getIsPlaying()) return;
 
-		this.lastClipFingerprint = this.computeClipFingerprint();
+		const fp = this.computeFingerprints();
+		this.lastStructureFingerprint = fp.structure;
+		this.lastSpeedFingerprint = fp.speed;
 		this.playbackStartTime = time;
 		this.playbackStartContextTime = audioContext.currentTime;
 
