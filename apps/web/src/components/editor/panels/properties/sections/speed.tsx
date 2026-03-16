@@ -4,7 +4,7 @@ import { useEditor } from "@/hooks/use-editor";
 import { clamp } from "@/utils/math";
 import { NumberField } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
 	Section,
 	SectionContent,
@@ -53,6 +53,7 @@ export function SpeedSection({
 }) {
 	const editor = useEditor();
 	const speed = element.speed ?? DEFAULT_SPEED;
+	const isScrubbing = useRef(false);
 	const [isCurveMode, setIsCurveMode] = useState(
 		() => (element.speedCurve?.length ?? 0) > 0,
 	);
@@ -64,7 +65,8 @@ export function SpeedSection({
 				? speed.toFixed(1)
 				: speed.toFixed(2);
 
-	const updateSpeed = (newSpeed: number) => {
+	/** Compute the speed update payload (speed + duration + sourceDuration) */
+	const buildSpeedUpdates = useCallback((newSpeed: number) => {
 		const clamped = clamp({ value: newSpeed, min: MIN_SPEED, max: MAX_SPEED });
 		const srcDuration = element.sourceDuration ?? (element.duration * (element.speed ?? 1));
 		const newDuration = computeDisplayDuration({
@@ -73,14 +75,14 @@ export function SpeedSection({
 			trimEnd: element.trimEnd,
 			speed: clamped,
 		});
+		return { speed: clamped, duration: newDuration, sourceDuration: srcDuration };
+	}, [element.sourceDuration, element.duration, element.speed, element.trimStart, element.trimEnd]);
+
+	/** Commit speed change (presets, text input, reset) */
+	const updateSpeed = (newSpeed: number) => {
+		const updates = buildSpeedUpdates(newSpeed);
 		editor.timeline.updateElements({
-			updates: [
-				{
-					trackId,
-					elementId: element.id,
-					updates: { speed: clamped, duration: newDuration, sourceDuration: srcDuration },
-				},
-			],
+			updates: [{ trackId, elementId: element.id, updates }],
 		});
 	};
 
@@ -94,9 +96,22 @@ export function SpeedSection({
 		updateSpeed(speed);
 	};
 
+	/** Preview during scrub — no undo history, no audio restart */
 	const handleScrub = (value: number) => {
-		updateSpeed(value);
+		const updates = buildSpeedUpdates(value);
+		isScrubbing.current = true;
+		editor.timeline.previewElements({
+			updates: [{ trackId, elementId: element.id, updates }],
+		});
 	};
+
+	/** Commit the preview on scrub end */
+	const handleScrubEnd = useCallback(() => {
+		if (isScrubbing.current) {
+			isScrubbing.current = false;
+			editor.timeline.commitPreview();
+		}
+	}, [editor]);
 
 	const handleCurveChange = (points: SpeedCurvePoint[]) => {
 		editor.timeline.updateElements({
@@ -145,7 +160,7 @@ export function SpeedSection({
 							onChange={handleChange}
 							onBlur={handleBlur}
 							onScrub={handleScrub}
-							onScrubEnd={() => {}}
+							onScrubEnd={handleScrubEnd}
 							onReset={() => updateSpeed(DEFAULT_SPEED)}
 							isDefault={speed === DEFAULT_SPEED}
 							dragSensitivity="slow"

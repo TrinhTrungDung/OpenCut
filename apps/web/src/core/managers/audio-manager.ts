@@ -118,7 +118,7 @@ export class AudioManager {
 			this.disposeSinks();
 			if (!this.editor.playback.getIsPlaying()) return;
 			void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
-		}, 100);
+		}, 300);
 	};
 
 	private ensureAudioContext(): AudioContext | null {
