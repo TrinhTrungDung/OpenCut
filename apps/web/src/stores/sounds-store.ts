@@ -222,6 +222,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	},
 
 	addExtractedToTimeline: async ({ extractedAudio }) => {
+		let blobUrl: string | null = null;
 		try {
 			const blob = await storageService.getExtractedAudioBlob({
 				id: extractedAudio.id,
@@ -231,7 +232,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 				return false;
 			}
 
-			const blobUrl = URL.createObjectURL(blob);
+			blobUrl = URL.createObjectURL(blob);
 
 			const editor = EditorCore.getInstance();
 			const currentTime = editor.playback.getCurrentTime();
@@ -240,6 +241,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			const audioContext = new AudioContext();
 			const arrayBuffer = await blob.arrayBuffer();
 			const buffer = await audioContext.decodeAudioData(arrayBuffer);
+			await audioContext.close();
 
 			const audioTrack = tracks.find((t) => t.type === "audio");
 			let trackId: string;
@@ -265,6 +267,8 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 
 			return true;
 		} catch (error) {
+			/* Revoke blob URL on failure to prevent memory leak */
+			if (blobUrl) URL.revokeObjectURL(blobUrl);
 			console.error("Failed to add extracted audio to timeline:", error);
 			toast.error(
 				error instanceof Error
