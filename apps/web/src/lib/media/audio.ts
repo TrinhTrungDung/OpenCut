@@ -9,10 +9,10 @@ import type { ElementAnimations } from "@/types/animation";
 import { canElementHaveAudio } from "@/lib/timeline/element-utils";
 import { canTracktHaveAudio } from "@/lib/timeline";
 import { mediaSupportsAudio } from "@/lib/media/media-utils";
+import { getVideoAudioFile } from "@/lib/media/video-audio-cache";
 import { resolveVolumeAtTime } from "@/lib/animation";
-import { Input, ALL_FORMATS, BlobSource, AudioBufferSink } from "mediabunny";
 
-const MAX_AUDIO_CHANNELS = 2;
+
 const EXPORT_SAMPLE_RATE = 44100;
 
 export type CollectedAudioElement = Omit<
@@ -109,22 +109,27 @@ export async function collectAudioElements({
 				const mediaAsset = mediaMap.get(element.mediaId);
 				if (!mediaAsset || !mediaSupportsAudio({ media: mediaAsset })) continue;
 
+				/* Use pre-extracted audio file for video elements */
+				const el = element;
+				const ma = mediaAsset;
 				pendingElements.push(
-					resolveAudioBufferForVideoElement({
-						mediaAsset,
-						audioContext,
-					}).then((audioBuffer) => {
-						if (!audioBuffer) return null;
-						const elementMuted = element.muted ?? false;
+					getVideoAudioFile({
+						mediaAssetId: ma.id,
+						videoFile: ma.file,
+					}).then(async (cached) => {
+						if (!cached) return null;
+						const arrayBuffer = await cached.file.arrayBuffer();
+						const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+						const elementMuted = el.muted ?? false;
 						return {
 							buffer: audioBuffer,
-							startTime: element.startTime,
-							duration: element.duration,
-							trimStart: element.trimStart,
-							trimEnd: element.trimEnd,
+							startTime: el.startTime,
+							duration: el.duration,
+							trimStart: el.trimStart,
+							trimEnd: el.trimEnd,
 							muted: elementMuted || isTrackMuted,
 							volume: 1,
-							animations: element.animations,
+							animations: el.animations,
 						};
 					}),
 				);
@@ -170,74 +175,6 @@ async function resolveAudioBufferForElement({
 	} catch (error) {
 		console.warn("Failed to decode audio:", error);
 		return null;
-	}
-}
-
-async function resolveAudioBufferForVideoElement({
-	mediaAsset,
-	audioContext,
-}: {
-	mediaAsset: MediaAsset;
-	audioContext: AudioContext;
-}): Promise<AudioBuffer | null> {
-	const input = new Input({
-		source: new BlobSource(mediaAsset.file),
-		formats: ALL_FORMATS,
-	});
-
-	try {
-		const audioTrack = await input.getPrimaryAudioTrack();
-		if (!audioTrack) return null;
-
-		const sink = new AudioBufferSink(audioTrack);
-		const targetSampleRate = audioContext.sampleRate;
-
-		const chunks: AudioBuffer[] = [];
-		let totalSamples = 0;
-
-		for await (const { buffer } of sink.buffers(0)) {
-			chunks.push(buffer);
-			totalSamples += buffer.length;
-		}
-
-		if (chunks.length === 0) return null;
-
-		const nativeSampleRate = chunks[0].sampleRate;
-		const numChannels = Math.min(MAX_AUDIO_CHANNELS, chunks[0].numberOfChannels);
-
-		const nativeChannels = Array.from(
-			{ length: numChannels },
-			() => new Float32Array(totalSamples),
-		);
-		let offset = 0;
-		for (const chunk of chunks) {
-			for (let channel = 0; channel < numChannels; channel++) {
-				const sourceData = chunk.getChannelData(Math.min(channel, chunk.numberOfChannels - 1));
-				nativeChannels[channel].set(sourceData, offset);
-			}
-			offset += chunk.length;
-		}
-
-		// use OfflineAudioContext for high-quality resampling to target rate
-		const outputSamples = Math.ceil(totalSamples * (targetSampleRate / nativeSampleRate));
-		const offlineContext = new OfflineAudioContext(numChannels, outputSamples, targetSampleRate);
-
-		const nativeBuffer = audioContext.createBuffer(numChannels, totalSamples, nativeSampleRate);
-		for (let ch = 0; ch < numChannels; ch++) {
-			nativeBuffer.copyToChannel(nativeChannels[ch], ch);
-		}
-
-		const sourceNode = offlineContext.createBufferSource();
-		sourceNode.buffer = nativeBuffer;
-		sourceNode.connect(offlineContext.destination);
-		sourceNode.start(0);
-
-		return await offlineContext.startRendering();
-	} catch (error) {
-		console.warn("Failed to decode video audio:", error);
-		return null;
-	} finally {
-		input.dispose();
 	}
 }
 
@@ -375,7 +312,7 @@ export async function collectAudioMixSources({
 	const mediaMap = new Map<string, MediaAsset>(
 		mediaAssets.map((asset) => [asset.id, asset]),
 	);
-	const pendingLibrarySources: Array<Promise<AudioMixSource | null>> = [];
+	const pendingSources: Array<Promise<AudioMixSource | null>> = [];
 
 	for (const track of tracks) {
 		if (canTracktHaveAudio(track) && track.muted) continue;
@@ -392,7 +329,7 @@ export async function collectAudioMixSources({
 						collectMediaAudioSource({ element, mediaAsset }),
 					);
 				} else {
-					pendingLibrarySources.push(fetchLibraryAudioSource({ element }));
+					pendingSources.push(fetchLibraryAudioSource({ element }));
 				}
 				continue;
 			}
@@ -402,16 +339,31 @@ export async function collectAudioMixSources({
 				if (!mediaAsset) continue;
 
 				if (mediaSupportsAudio({ media: mediaAsset })) {
-					audioMixSources.push(
-						collectMediaAudioSource({ element, mediaAsset }),
+					/* Use pre-extracted audio for video elements */
+					const el = element;
+					const ma = mediaAsset;
+					pendingSources.push(
+						getVideoAudioFile({
+							mediaAssetId: ma.id,
+							videoFile: ma.file,
+						}).then((cached) => {
+							if (!cached) return null;
+							return {
+								file: cached.file,
+								startTime: el.startTime,
+								duration: el.duration,
+								trimStart: el.trimStart,
+								trimEnd: el.trimEnd,
+							};
+						}),
 					);
 				}
 			}
 		}
 	}
 
-	const resolvedLibrarySources = await Promise.all(pendingLibrarySources);
-	for (const source of resolvedLibrarySources) {
+	const resolvedSources = await Promise.all(pendingSources);
+	for (const source of resolvedSources) {
 		if (source) audioMixSources.push(source);
 	}
 
@@ -429,7 +381,7 @@ export async function collectAudioClips({
 	const mediaMap = new Map<string, MediaAsset>(
 		mediaAssets.map((asset) => [asset.id, asset]),
 	);
-	const pendingLibraryClips: Array<Promise<AudioClipSource | null>> = [];
+	const pendingClips: Array<Promise<AudioClipSource | null>> = [];
 
 	for (const track of tracks) {
 		const isTrackMuted = canTracktHaveAudio(track) && track.muted;
@@ -454,7 +406,7 @@ export async function collectAudioClips({
 						}),
 					);
 				} else {
-					pendingLibraryClips.push(fetchLibraryAudioClip({ element, muted }));
+					pendingClips.push(fetchLibraryAudioClip({ element, muted }));
 				}
 				continue;
 			}
@@ -464,11 +416,28 @@ export async function collectAudioClips({
 				if (!mediaAsset) continue;
 
 				if (mediaSupportsAudio({ media: mediaAsset })) {
-					clips.push(
-						collectMediaAudioClip({
-							element,
-							mediaAsset,
-							muted,
+					/* Use pre-extracted audio file instead of raw video container.
+					   This separates video and audio processing completely —
+					   the audio pipeline never touches the video demuxer. */
+					const el = element;
+					const ma = mediaAsset;
+					pendingClips.push(
+						getVideoAudioFile({
+							mediaAssetId: ma.id,
+							videoFile: ma.file,
+						}).then((cached) => {
+							if (!cached) return null;
+							return {
+								id: el.id,
+								sourceKey: `${ma.id}-audio`,
+								file: cached.file,
+								startTime: el.startTime,
+								duration: el.duration,
+								trimStart: el.trimStart,
+								trimEnd: el.trimEnd,
+								muted,
+								speed: el.speed ?? 1,
+							};
 						}),
 					);
 				}
@@ -476,8 +445,8 @@ export async function collectAudioClips({
 		}
 	}
 
-	const resolvedLibraryClips = await Promise.all(pendingLibraryClips);
-	for (const clip of resolvedLibraryClips) {
+	const resolvedClips = await Promise.all(pendingClips);
+	for (const clip of resolvedClips) {
 		if (clip) clips.push(clip);
 	}
 

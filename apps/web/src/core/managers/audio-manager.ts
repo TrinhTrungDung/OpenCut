@@ -109,10 +109,6 @@ export class AudioManager {
 		this.stopPlayback();
 	};
 
-	/** Fingerprints for detecting what changed */
-	private lastStructureFingerprint = "";
-	private lastSpeedFingerprint = "";
-
 	private handleTimelineChange = (): void => {
 		if (this.timelineChangeTimer) {
 			clearTimeout(this.timelineChangeTimer);
@@ -122,59 +118,27 @@ export class AudioManager {
 			if (!this.editor.playback.getIsPlaying()) return;
 
 			const { structure, speed } = this.computeFingerprints();
-			const structureChanged = structure !== this.lastStructureFingerprint;
-			const speedChanged = speed !== this.lastSpeedFingerprint;
 
-			if (!structureChanged && !speedChanged) return;
+			/* If structure changed (add/remove/mute/move clips), full restart */
+			if (structure !== this.lastStructureFingerprint) {
+				this.lastStructureFingerprint = structure;
+				this.lastSpeedFingerprint = speed;
+				this.crossfadeRestart();
+				return;
+			}
 
-			this.lastStructureFingerprint = structure;
-			this.lastSpeedFingerprint = speed;
-
-			if (structureChanged) {
-				/* Clips added/removed/muted/repositioned — full rebuild */
-				this.disposeSinks();
-				void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
-			} else {
-				/* Only speed changed — keep sinks, just reschedule with fade */
-				this.softRestart();
+			/* If only speed changed, update playbackRate on existing nodes in-place */
+			if (speed !== this.lastSpeedFingerprint) {
+				this.lastSpeedFingerprint = speed;
+				this.updatePlaybackRates();
 			}
 		}, 300);
 	};
 
-	/**
-	 * Update playbackRate on all live audio sources and clip data
-	 * without stopping or restarting anything — truly seamless.
-	 */
-	private updatePlaybackRates(): void {
-		/* Read current speeds from timeline elements */
-		const speedMap = new Map<string, number>();
-		for (const track of this.editor.timeline.getTracks()) {
-			for (const el of track.elements) {
-				if (el.type !== "audio" && el.type !== "video") continue;
-				speedMap.set(el.id, el.speed ?? 1);
-			}
-		}
+	/** Separate fingerprints: structure (needs restart) vs speed (can update in-place) */
+	private lastStructureFingerprint = "";
+	private lastSpeedFingerprint = "";
 
-		/* Update stored clip speeds so new buffers use the right rate */
-		for (const clip of this.clips) {
-			const newSpeed = speedMap.get(clip.id);
-			if (newSpeed !== undefined) {
-				clip.speed = newSpeed;
-			}
-		}
-
-		/* Update playbackRate on all queued/playing AudioBufferSourceNodes.
-		   Web Audio API smoothly transitions playbackRate without clicks. */
-		for (const source of this.queuedSources) {
-			const clipId = this.sourceClipIds.get(source);
-			const newSpeed = clipId ? speedMap.get(clipId) ?? 1 : 1;
-			try {
-				source.playbackRate.value = newSpeed;
-			} catch {}
-		}
-	}
-
-	/** Separate structural fingerprint (needs full rebuild) from speed (soft restart) */
 	private computeFingerprints(): { structure: string; speed: string } {
 		const tracks = this.editor.timeline.getTracks();
 		const structureParts: string[] = [];
@@ -192,6 +156,71 @@ export class AudioManager {
 			structure: structureParts.join("|"),
 			speed: speedParts.join("|"),
 		};
+	}
+
+	/** Update playbackRate on all queued source nodes without restarting audio */
+	private updatePlaybackRates(): void {
+		/* Build a map of clip ID → new speed from current tracks */
+		const speedMap = new Map<string, number>();
+		const tracks = this.editor.timeline.getTracks();
+		for (const track of tracks) {
+			for (const el of track.elements) {
+				if (el.type !== "audio" && el.type !== "video") continue;
+				speedMap.set(el.id, el.speed ?? 1);
+			}
+		}
+
+		/* Also update the internal clips array so future buffers use new speed */
+		for (const clip of this.clips) {
+			const newSpeed = speedMap.get(clip.id);
+			if (newSpeed !== undefined) {
+				clip.speed = newSpeed;
+			}
+		}
+
+		/* Update existing queued source nodes */
+		for (const source of this.queuedSources) {
+			const clipId = this.sourceClipIds.get(source);
+			if (!clipId) continue;
+			const newSpeed = speedMap.get(clipId);
+			if (newSpeed !== undefined) {
+				source.playbackRate.value = newSpeed;
+			}
+		}
+	}
+
+	/**
+	 * Crossfade restart: fade out over 50ms, then start new playback.
+	 * Keeps sinks alive so the new playback starts quickly.
+	 */
+	private crossfadeRestart(): void {
+		const audioContext = this.audioContext;
+		if (!audioContext || !this.masterGain) return;
+
+		const now = audioContext.currentTime;
+		const fadeMs = 50;
+		const fadeSec = fadeMs / 1000;
+
+		/* Ramp master gain to 0 */
+		this.masterGain.gain.setValueAtTime(this.lastVolume, now);
+		this.masterGain.gain.linearRampToValueAtTime(0.0001, now + fadeSec);
+
+		/* Capture the target time now so it's accurate */
+		const resumeTime = this.editor.playback.getCurrentTime();
+
+		setTimeout(() => {
+			if (!this.masterGain || !this.editor.playback.getIsPlaying()) return;
+
+			/* Stop old sources */
+			this.stopPlayback();
+
+			/* Restore gain immediately */
+			this.masterGain.gain.cancelScheduledValues(0);
+			this.masterGain.gain.value = this.lastVolume;
+
+			/* Start new playback — sinks are still alive so this is fast */
+			void this.startPlayback({ time: resumeTime });
+		}, fadeMs + 5);
 	}
 
 	private ensureAudioContext(): AudioContext | null {
@@ -373,6 +402,10 @@ export class AudioManager {
 			const node = audioContext.createBufferSource();
 			node.buffer = buffer;
 			node.playbackRate.value = clip.speed ?? 1;
+			/* Keep Pitch: prevent chipmunk/slow-motion voice distortion */
+			if ("preservesPitch" in node) {
+				node.preservesPitch = true;
+			}
 			node.connect(clipGain);
 
 			const startTimestamp =

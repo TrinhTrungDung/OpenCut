@@ -67,9 +67,12 @@ export abstract class VisualNode<
 
 	protected isInRange({ time }: { time: number }): boolean {
 		const localTime = this.getSourceLocalTime({ time });
+		/* Use sourceDuration for the upper bound — duration is the display
+		   duration (affected by speed), but localTime is in source-media time. */
+		const srcDuration = this.params.sourceDuration ?? this.params.duration;
 		return (
 			localTime >= this.params.trimStart - TIME_EPSILON_SECONDS &&
-			localTime < this.params.trimStart + this.params.duration
+			localTime < this.params.trimStart + srcDuration - this.params.trimEnd
 		);
 	}
 

@@ -4,6 +4,7 @@ import { storageService } from "@/services/storage/service";
 import { generateUUID } from "@/utils/id";
 import { videoCache } from "@/services/video-cache/service";
 import { hasMediaId } from "@/lib/timeline/element-utils";
+import { preExtractAudio, evictVideoAudio } from "@/lib/media/video-audio-cache";
 
 export class MediaManager {
 	private assets: MediaAsset[] = [];
@@ -27,6 +28,12 @@ export class MediaManager {
 		this.assets = [...this.assets, newAsset];
 		this.notify();
 
+		/* Pre-extract audio from video files in background so it's ready
+		   when playback starts — video and audio are separate streams */
+		if (newAsset.type === "video") {
+			preExtractAudio({ mediaAssetId: newAsset.id, videoFile: newAsset.file });
+		}
+
 		try {
 			await storageService.saveMediaAsset({ projectId, mediaAsset: newAsset });
 		} catch (error) {
@@ -46,6 +53,7 @@ export class MediaManager {
 		const asset = this.assets.find((asset) => asset.id === id);
 
 		videoCache.clearVideo({ mediaId: id });
+		evictVideoAudio({ mediaAssetId: id });
 
 		if (asset?.url) {
 			URL.revokeObjectURL(asset.url);
@@ -89,6 +97,13 @@ export class MediaManager {
 			});
 			this.assets = mediaAssets;
 			this.notify();
+
+			/* Pre-extract audio from all video assets in background */
+			for (const asset of mediaAssets) {
+				if (asset.type === "video") {
+					preExtractAudio({ mediaAssetId: asset.id, videoFile: asset.file });
+				}
+			}
 		} catch (error) {
 			console.error("Failed to load media assets:", error);
 		} finally {

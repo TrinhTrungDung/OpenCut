@@ -52,7 +52,11 @@ import {
 	Exchange01Icon,
 	KeyframeIcon,
 	MagicWand05Icon,
+	MusicNote03Icon,
 } from "@hugeicons/core-free-icons";
+import { extractAudioFromVideo } from "@/lib/media/extract-audio-from-video";
+import { buildUploadAudioElement } from "@/lib/timeline/element-utils";
+import { toast } from "sonner";
 import { SpeedBadge } from "./speed-badge";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { uppercase } from "@/utils/string";
@@ -321,6 +325,13 @@ export function TimelineElement({
 						isMultipleSelected={selectedElements.length > 1}
 						isCurrentElementSelected={isCurrentElementSelected}
 						isMuted={isMuted}
+					/>
+				)}
+				{element.type === "video" && hasAudio && mediaAsset && (
+					<ExtractAudioMenuItem
+						element={element}
+						track={track}
+						mediaAsset={mediaAsset}
 					/>
 				)}
 				{canElementBeHidden(element) && (
@@ -883,6 +894,115 @@ function DeleteMenuItem({
 				? `Delete ${selectedCount} elements`
 				: `Delete ${elementType === "text" ? "text" : "clip"}`}
 		</ActionMenuItem>
+	);
+}
+
+function ExtractAudioMenuItem({
+	element,
+	track,
+	mediaAsset,
+}: {
+	element: TimelineElementType;
+	track: TimelineTrack;
+	mediaAsset: MediaAsset;
+}) {
+	const editor = useEditor();
+
+	const handleExtractAudio = async (event: React.MouseEvent) => {
+		event.stopPropagation();
+
+		const toastId = toast.info("Extracting audio...", { duration: Infinity });
+
+		try {
+			const { blob, duration } = await extractAudioFromVideo({
+				file: mediaAsset.file,
+				onProgress: ({ progress }) => {
+					toast.info(`Extracting audio... ${Math.round(progress)}%`, {
+						id: toastId,
+						duration: Infinity,
+					});
+				},
+			});
+
+			/* Create audio file from extracted blob */
+			const nameWithoutExt = mediaAsset.name.replace(/\.[^/.]+$/, "");
+			const audioFile = new File([blob], `${nameWithoutExt} (audio).wav`, {
+				type: "audio/wav",
+			});
+
+			/* Add as media asset */
+			const projectId = editor.project.getActive().metadata.id;
+			await editor.media.addMediaAsset({
+				projectId,
+				asset: {
+					name: `${nameWithoutExt} (audio)`,
+					type: "audio",
+					file: audioFile,
+					duration,
+				},
+			});
+
+			/* Find the newly added audio asset (last one) */
+			const assets = editor.media.getAssets();
+			const audioAsset = assets[assets.length - 1];
+			if (!audioAsset) throw new Error("Failed to create audio asset");
+
+			/* Build audio element matching the video's timing & speed */
+			const audioElement = buildUploadAudioElement({
+				mediaId: audioAsset.id,
+				name: `${nameWithoutExt} (audio)`,
+				duration: element.duration,
+				startTime: element.startTime,
+			});
+			audioElement.trimStart = element.trimStart;
+			audioElement.trimEnd = element.trimEnd;
+			audioElement.sourceDuration = duration;
+			if (element.speed !== undefined && element.speed !== 1) {
+				audioElement.speed = element.speed;
+			}
+
+			/* Find the video track index to place audio track right after it */
+			const tracks = editor.timeline.getTracks();
+			const videoTrackIndex = tracks.findIndex((t) => t.id === track.id);
+			const insertIndex = videoTrackIndex >= 0 ? videoTrackIndex + 1 : tracks.length;
+
+			/* Add audio track and insert element */
+			const audioTrackId = editor.timeline.addTrack({
+				type: "audio",
+				index: insertIndex,
+			});
+
+			editor.timeline.insertElement({
+				placement: { mode: "explicit", trackId: audioTrackId },
+				element: audioElement,
+			});
+
+			/* Mute the video element */
+			editor.timeline.updateElements({
+				updates: [{
+					trackId: track.id,
+					elementId: element.id,
+					updates: { muted: true },
+				}],
+			});
+
+			toast.success("Audio extracted successfully", { id: toastId });
+		} catch (error) {
+			console.error("Failed to extract audio:", error);
+			toast.error(
+				error instanceof Error ? error.message : "Failed to extract audio",
+				{ id: toastId },
+			);
+		}
+	};
+
+	return (
+		<ContextMenuItem
+			icon={<HugeiconsIcon icon={MusicNote03Icon} />}
+			onClick={handleExtractAudio}
+		>
+			Extract audio
+		</ContextMenuItem>
 	);
 }
 
