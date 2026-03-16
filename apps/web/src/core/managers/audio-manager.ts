@@ -28,6 +28,8 @@ export class AudioManager {
 	>();
 	private clipGains = new Map<string, GainNode>();
 	private queuedSources = new Set<AudioBufferSourceNode>();
+	/** Maps each queued source node to the clip ID that owns it */
+	private sourceClipIds = new Map<AudioBufferSourceNode, string>();
 	private playbackSessionId = 0;
 	private lastIsPlaying = false;
 	private lastVolume = 1;
@@ -140,27 +142,36 @@ export class AudioManager {
 	};
 
 	/**
-	 * Restart playback without destroying sinks. Fades out current
-	 * sources over a short ramp to avoid click, then reschedules.
+	 * Update playbackRate on all live audio sources and clip data
+	 * without stopping or restarting anything — truly seamless.
 	 */
-	private softRestart(): void {
-		const audioContext = this.audioContext;
-		if (!audioContext || !this.masterGain) return;
+	private updatePlaybackRates(): void {
+		/* Read current speeds from timeline elements */
+		const speedMap = new Map<string, number>();
+		for (const track of this.editor.timeline.getTracks()) {
+			for (const el of track.elements) {
+				if (el.type !== "audio" && el.type !== "video") continue;
+				speedMap.set(el.id, el.speed ?? 1);
+			}
+		}
 
-		/* Ramp master gain to 0 over 30ms to avoid click */
-		const now = audioContext.currentTime;
-		this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-		this.masterGain.gain.linearRampToValueAtTime(0, now + 0.03);
+		/* Update stored clip speeds so new buffers use the right rate */
+		for (const clip of this.clips) {
+			const newSpeed = speedMap.get(clip.id);
+			if (newSpeed !== undefined) {
+				clip.speed = newSpeed;
+			}
+		}
 
-		/* After the ramp, stop old sources and restart */
-		setTimeout(() => {
-			this.stopPlayback();
-			if (!this.masterGain) return;
-			this.masterGain.gain.cancelScheduledValues(0);
-			this.masterGain.gain.value = this.lastVolume;
-			if (!this.editor.playback.getIsPlaying()) return;
-			void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
-		}, 35);
+		/* Update playbackRate on all queued/playing AudioBufferSourceNodes.
+		   Web Audio API smoothly transitions playbackRate without clicks. */
+		for (const source of this.queuedSources) {
+			const clipId = this.sourceClipIds.get(source);
+			const newSpeed = clipId ? speedMap.get(clipId) ?? 1 : 1;
+			try {
+				source.playbackRate.value = newSpeed;
+			} catch {}
+		}
 	}
 
 	/** Separate structural fingerprint (needs full rebuild) from speed (soft restart) */
@@ -304,6 +315,7 @@ export class AudioManager {
 			source.disconnect();
 		}
 		this.queuedSources.clear();
+		this.sourceClipIds.clear();
 
 		for (const gain of this.clipGains.values()) {
 			gain.disconnect();
@@ -420,9 +432,11 @@ export class AudioManager {
 			}
 
 			this.queuedSources.add(node);
+			this.sourceClipIds.set(node, clip.id);
 			node.addEventListener("ended", () => {
 				node.disconnect();
 				this.queuedSources.delete(node);
+				this.sourceClipIds.delete(node);
 			});
 
 			const aheadTime = timelineTime - this.getPlaybackTime();
