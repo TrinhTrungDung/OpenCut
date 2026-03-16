@@ -258,6 +258,8 @@ export interface AudioClipSource {
 	trimStart: number;
 	trimEnd: number;
 	muted: boolean;
+	/** Playback speed multiplier (default 1.0) */
+	speed: number;
 }
 
 async function fetchLibraryAudioSource({
@@ -316,6 +318,7 @@ async function fetchLibraryAudioClip({
 			trimStart: element.trimStart,
 			trimEnd: element.trimEnd,
 			muted,
+			speed: element.speed ?? 1,
 		};
 	} catch (error) {
 		console.warn("Failed to fetch library audio:", error);
@@ -357,6 +360,7 @@ function collectMediaAudioClip({
 		trimStart: element.trimStart,
 		trimEnd: element.trimEnd,
 		muted,
+		speed: element.speed ?? 1,
 	};
 }
 
