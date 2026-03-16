@@ -7,9 +7,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useState, useRef } from "react";
+import { useState, useRef, useSyncExternalStore } from "react";
 import { extractTimelineAudio } from "@/lib/media/mediabunny";
 import { useEditor } from "@/hooks/use-editor";
+import type { TimelineTrack } from "@/types/timeline";
 import { DEFAULT_TEXT_ELEMENT } from "@/constants/text-constants";
 import { TRANSCRIPTION_LANGUAGES } from "@/constants/transcription-constants";
 import { LANGUAGES } from "@/constants/language-constants";
@@ -37,6 +38,11 @@ export function Captions() {
 	const [error, setError] = useState<string | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editor = useEditor();
+
+	const selectedElements = useSyncExternalStore(
+		(listener) => editor.selection.subscribe(listener),
+		() => editor.selection.getSelectedElements(),
+	);
 
 	const apiKey = useAIStore((s) => s.apiKey);
 	const model = useAIStore((s) => s.model);
@@ -150,16 +156,57 @@ export function Captions() {
 		return captionChunks;
 	};
 
+	/** Build tracks containing only the selected elements, plus compute their time range */
+	const getSelectedScope = () => {
+		const allTracks = editor.timeline.getTracks();
+		const selected = editor.selection.getSelectedElements();
+
+		if (selected.length === 0) {
+			return {
+				tracks: allTracks,
+				totalDuration: editor.timeline.getTotalDuration(),
+				timeOffset: 0,
+			};
+		}
+
+		const selectedSet = new Set(selected.map((s) => `${s.trackId}:${s.elementId}`));
+		const filteredTracks: TimelineTrack[] = [];
+		let minStart = Number.POSITIVE_INFINITY;
+		let maxEnd = 0;
+
+		for (const track of allTracks) {
+			const matchingElements = track.elements.filter((el) =>
+				selectedSet.has(`${track.id}:${el.id}`),
+			);
+			if (matchingElements.length === 0) continue;
+
+			for (const el of matchingElements) {
+				minStart = Math.min(minStart, el.startTime);
+				maxEnd = Math.max(maxEnd, el.startTime + el.duration);
+			}
+
+			filteredTracks.push({ ...track, elements: matchingElements } as TimelineTrack);
+		}
+
+		return {
+			tracks: filteredTracks,
+			totalDuration: maxEnd,
+			timeOffset: 0,
+		};
+	};
+
 	const handleGenerateTranscript = async () => {
 		try {
 			setIsProcessing(true);
 			setError(null);
 			setProcessingStep("Extracting audio...");
 
+			const { tracks, totalDuration } = getSelectedScope();
+
 			const audioBlob = await extractTimelineAudio({
-				tracks: editor.timeline.getTracks(),
+				tracks,
 				mediaAssets: editor.media.getAssets(),
-				totalDuration: editor.timeline.getTotalDuration(),
+				totalDuration,
 			});
 
 			const captionChunks =
@@ -263,13 +310,23 @@ export function Captions() {
 					</div>
 				)}
 
+				{selectedElements.length > 0 && (
+					<p className="text-muted-foreground text-xs">
+						{selectedElements.length} clip{selectedElements.length > 1 ? "s" : ""} selected — captions will be generated for selected clips only
+					</p>
+				)}
+
 				<Button
 					className="w-full"
 					onClick={handleGenerateTranscript}
 					disabled={isProcessing}
 				>
 					{isProcessing && <Spinner className="mr-1" />}
-					{isProcessing ? processingStep : "Generate transcript"}
+					{isProcessing
+						? processingStep
+						: selectedElements.length > 0
+							? `Generate for ${selectedElements.length} clip${selectedElements.length > 1 ? "s" : ""}`
+							: "Generate transcript"}
 				</Button>
 			</div>
 		</PanelView>

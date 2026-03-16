@@ -9,6 +9,8 @@ export interface MediaDragData extends BaseDragData {
 	type: "media";
 	mediaType: "image" | "video" | "audio";
 	targetElementTypes?: ("video" | "image")[];
+	trimStart?: number;
+	trimEnd?: number;
 }
 
 export interface TextDragData extends BaseDragData {
