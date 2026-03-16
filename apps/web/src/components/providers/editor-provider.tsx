@@ -9,6 +9,7 @@ import {
 	useKeybindingDisabler,
 } from "@/hooks/use-keybindings";
 import { useEditorActions } from "@/hooks/actions/use-editor-actions";
+import { useAIActions } from "@/hooks/actions/use-ai-actions";
 import { prefetchFontAtlas } from "@/lib/fonts/google-fonts";
 
 interface EditorProviderProps {
@@ -133,6 +134,7 @@ function EditorRuntimeBindings() {
 	}, [editor]);
 
 	useEditorActions();
+	useAIActions();
 	useKeybindingsListener();
 	return null;
 }

@@ -15,21 +15,32 @@ import { TRANSCRIPTION_LANGUAGES } from "@/constants/transcription-constants";
 import type {
 	TranscriptionLanguage,
 	TranscriptionProgress,
+	CaptionChunk,
 } from "@/types/transcription";
 import { transcriptionService } from "@/services/transcription/service";
 import { decodeAudioToFloat32 } from "@/lib/media/audio";
 import { buildCaptionChunks } from "@/lib/transcription/caption";
 import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
+import { useAIStore } from "@/stores/ai-store";
+import { aiSubtitleGenerator } from "@/services/ai/subtitle-generator";
+
+type CaptionProvider = "local" | "gemini";
 
 export function Captions() {
 	const [selectedLanguage, setSelectedLanguage] =
 		useState<TranscriptionLanguage>("auto");
+	const [provider, setProvider] = useState<CaptionProvider>("local");
+	const [targetLanguage, setTargetLanguage] = useState<string>("none");
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [processingStep, setProcessingStep] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editor = useEditor();
+
+	const apiKey = useAIStore((s) => s.apiKey);
+	const model = useAIStore((s) => s.model);
+	const hasApiKey = apiKey.length > 0;
 
 	const handleProgress = (progress: TranscriptionProgress) => {
 		if (progress.status === "loading-model") {
@@ -37,6 +48,69 @@ export function Captions() {
 		} else if (progress.status === "transcribing") {
 			setProcessingStep("Transcribing...");
 		}
+	};
+
+	const insertCaptions = (captionChunks: CaptionChunk[]) => {
+		const captionTrackId = editor.timeline.addTrack({
+			type: "text",
+			index: 0,
+		});
+
+		for (let i = 0; i < captionChunks.length; i++) {
+			const caption = captionChunks[i];
+			editor.timeline.insertElement({
+				placement: { mode: "explicit", trackId: captionTrackId },
+				element: {
+					...DEFAULT_TEXT_ELEMENT,
+					name: `Caption ${i + 1}`,
+					content: caption.text,
+					duration: caption.duration,
+					startTime: caption.startTime,
+					fontSize: 65,
+					fontWeight: "bold",
+				},
+			});
+		}
+	};
+
+	const handleLocalTranscription = async (audioBlob: Blob) => {
+		setProcessingStep("Preparing audio...");
+		const { samples } = await decodeAudioToFloat32({ audioBlob });
+
+		const result = await transcriptionService.transcribe({
+			audioData: samples,
+			language: selectedLanguage === "auto" ? undefined : selectedLanguage,
+			onProgress: handleProgress,
+		});
+
+		setProcessingStep("Generating captions...");
+		return buildCaptionChunks({ segments: result.segments });
+	};
+
+	const handleGeminiTranscription = async (audioBlob: Blob) => {
+		setProcessingStep("Sending audio to Gemini...");
+
+		const sourceLangName =
+			selectedLanguage === "auto"
+				? "Auto detect"
+				: TRANSCRIPTION_LANGUAGES.find((l) => l.code === selectedLanguage)
+						?.name ?? selectedLanguage;
+
+		const targetLangName =
+			targetLanguage !== "none"
+				? TRANSCRIPTION_LANGUAGES.find((l) => l.code === targetLanguage)?.name
+				: undefined;
+
+		const captionChunks = await aiSubtitleGenerator.generateSubtitles({
+			audioBlob,
+			sourceLanguage: sourceLangName,
+			targetLanguage: targetLangName,
+			apiKey,
+			model,
+		});
+
+		setProcessingStep("Processing subtitles...");
+		return captionChunks;
 	};
 
 	const handleGenerateTranscript = async () => {
@@ -51,38 +125,13 @@ export function Captions() {
 				totalDuration: editor.timeline.getTotalDuration(),
 			});
 
-			setProcessingStep("Preparing audio...");
-			const { samples } = await decodeAudioToFloat32({ audioBlob });
+			const captionChunks =
+				provider === "gemini"
+					? await handleGeminiTranscription(audioBlob)
+					: await handleLocalTranscription(audioBlob);
 
-			const result = await transcriptionService.transcribe({
-				audioData: samples,
-				language: selectedLanguage === "auto" ? undefined : selectedLanguage,
-				onProgress: handleProgress,
-			});
-
-			setProcessingStep("Generating captions...");
-			const captionChunks = buildCaptionChunks({ segments: result.segments });
-
-			const captionTrackId = editor.timeline.addTrack({
-				type: "text",
-				index: 0,
-			});
-
-			for (let i = 0; i < captionChunks.length; i++) {
-				const caption = captionChunks[i];
-				editor.timeline.insertElement({
-					placement: { mode: "explicit", trackId: captionTrackId },
-					element: {
-						...DEFAULT_TEXT_ELEMENT,
-						name: `Caption ${i + 1}`,
-						content: caption.text,
-						duration: caption.duration,
-						startTime: caption.startTime,
-						fontSize: 65,
-						fontWeight: "bold",
-					},
-				});
-			}
+			setProcessingStep("Inserting captions...");
+			insertCaptions(captionChunks);
 		} catch (error) {
 			console.error("Transcription failed:", error);
 			setError(
@@ -110,6 +159,24 @@ export function Captions() {
 	return (
 		<PanelView title="Captions" ref={containerRef}>
 			<div className="flex flex-col gap-3">
+				<Label>Provider</Label>
+				<Select
+					value={provider}
+					onValueChange={(value) => setProvider(value as CaptionProvider)}
+				>
+					<SelectTrigger>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="local">Local (Whisper)</SelectItem>
+						<SelectItem value="gemini" disabled={!hasApiKey}>
+							AI (Gemini){!hasApiKey && " — API key required"}
+						</SelectItem>
+					</SelectContent>
+				</Select>
+			</div>
+
+			<div className="flex flex-col gap-3">
 				<Label>Language</Label>
 				<Select
 					value={selectedLanguage}
@@ -128,6 +195,25 @@ export function Captions() {
 					</SelectContent>
 				</Select>
 			</div>
+
+			{provider === "gemini" && (
+				<div className="flex flex-col gap-3">
+					<Label>Translate to</Label>
+					<Select value={targetLanguage} onValueChange={setTargetLanguage}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="none">None (original language)</SelectItem>
+							{TRANSCRIPTION_LANGUAGES.map((language) => (
+								<SelectItem key={language.code} value={language.code}>
+									{language.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+			)}
 
 			<div className="flex flex-col gap-4">
 				{error && (
