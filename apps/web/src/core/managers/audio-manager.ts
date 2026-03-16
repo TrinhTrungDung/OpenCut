@@ -107,19 +107,48 @@ export class AudioManager {
 		this.stopPlayback();
 	};
 
+	/** Fingerprint of current audio clip structure for change detection */
+	private lastClipFingerprint = "";
+
 	private handleTimelineChange = (): void => {
-		/* Only restart audio when timeline structure actually changes while playing.
-		   Debounce to avoid rapid dispose/restart cycles that cause audio clicks. */
+		/* Only restart audio when the audio-relevant structure actually changes
+		   (clips added/removed/muted/repositioned). Skip restarts for property-only
+		   changes like speed, effects, or color correction to avoid audio clicking. */
 		if (this.timelineChangeTimer) {
 			clearTimeout(this.timelineChangeTimer);
 		}
 		this.timelineChangeTimer = window.setTimeout(() => {
 			this.timelineChangeTimer = null;
-			this.disposeSinks();
 			if (!this.editor.playback.getIsPlaying()) return;
+
+			const fingerprint = this.computeClipFingerprint();
+			if (fingerprint === this.lastClipFingerprint) return;
+			this.lastClipFingerprint = fingerprint;
+
+			this.disposeSinks();
 			void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
 		}, 300);
 	};
+
+	/**
+	 * Build a fingerprint from audio-structural properties only.
+	 * Excludes speed/duration (speed changes shouldn't restart audio —
+	 * playbackRate handles that live). Only structural changes like
+	 * adding/removing clips, muting, or repositioning trigger restart.
+	 */
+	private computeClipFingerprint(): string {
+		const tracks = this.editor.timeline.getTracks();
+		const parts: string[] = [];
+		for (const track of tracks) {
+			const muted = "muted" in track && track.muted;
+			for (const el of track.elements) {
+				if (el.type !== "audio" && el.type !== "video") continue;
+				const elMuted = "muted" in el ? el.muted : false;
+				parts.push(`${el.id}:${el.startTime}:${el.trimStart}:${muted || elMuted}`);
+			}
+		}
+		return parts.join("|");
+	}
 
 	private ensureAudioContext(): AudioContext | null {
 		if (this.audioContext) return this.audioContext;
@@ -185,6 +214,7 @@ export class AudioManager {
 		this.clips = await collectAudioClips({ tracks, mediaAssets });
 		if (!this.editor.playback.getIsPlaying()) return;
 
+		this.lastClipFingerprint = this.computeClipFingerprint();
 		this.playbackStartTime = time;
 		this.playbackStartContextTime = audioContext.currentTime;
 
