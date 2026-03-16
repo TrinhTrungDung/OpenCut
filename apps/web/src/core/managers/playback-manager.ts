@@ -159,12 +159,6 @@ export class PlaybackManager {
 		} else {
 			this.currentTime = newTime;
 			this.notify();
-
-			window.dispatchEvent(
-				new CustomEvent("playback-update", {
-					detail: { time: newTime },
-				}),
-			);
 		}
 
 		this.playbackTimer = requestAnimationFrame(this.updateTime);

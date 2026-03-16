@@ -15,8 +15,8 @@ export class AudioManager {
 	private playbackStartTime = 0;
 	private playbackStartContextTime = 0;
 	private scheduleTimer: number | null = null;
-	private lookaheadSeconds = 2;
-	private scheduleIntervalMs = 500;
+	private lookaheadSeconds = 3;
+	private scheduleIntervalMs = 300;
 	private clips: AudioClipSource[] = [];
 	private sinks = new Map<string, AudioBufferSink>();
 	private inputs = new Map<string, Input>();
@@ -30,6 +30,7 @@ export class AudioManager {
 	private lastIsPlaying = false;
 	private lastVolume = 1;
 	private playbackLatencyCompensationSeconds = 0;
+	private timelineChangeTimer: number | null = null;
 	private unsubscribers: Array<() => void> = [];
 
 	constructor(private editor: EditorCore) {
@@ -46,6 +47,10 @@ export class AudioManager {
 	}
 
 	dispose(): void {
+		if (this.timelineChangeTimer) {
+			clearTimeout(this.timelineChangeTimer);
+			this.timelineChangeTimer = null;
+		}
 		this.stopPlayback();
 		for (const unsub of this.unsubscribers) {
 			unsub();
@@ -101,21 +106,31 @@ export class AudioManager {
 	};
 
 	private handleTimelineChange = (): void => {
-		this.disposeSinks();
-
-		if (!this.editor.playback.getIsPlaying()) return;
-
-		void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
+		/* Only restart audio when timeline structure actually changes while playing.
+		   Debounce to avoid rapid dispose/restart cycles that cause audio clicks. */
+		if (this.timelineChangeTimer) {
+			clearTimeout(this.timelineChangeTimer);
+		}
+		this.timelineChangeTimer = window.setTimeout(() => {
+			this.timelineChangeTimer = null;
+			this.disposeSinks();
+			if (!this.editor.playback.getIsPlaying()) return;
+			void this.startPlayback({ time: this.editor.playback.getCurrentTime() });
+		}, 100);
 	};
 
 	private ensureAudioContext(): AudioContext | null {
 		if (this.audioContext) return this.audioContext;
 		if (typeof window === "undefined") return null;
 
+		/* Use default sample rate — Web Audio API handles resampling automatically */
 		this.audioContext = createAudioContext();
 		this.masterGain = this.audioContext.createGain();
 		this.masterGain.gain.value = this.lastVolume;
 		this.masterGain.connect(this.audioContext.destination);
+
+		/* Log sample rate for debugging audio clicking issues */
+		console.debug(`[AudioManager] AudioContext sampleRate: ${this.audioContext.sampleRate}`);
 		return this.audioContext;
 	}
 
@@ -267,6 +282,7 @@ export class AudioManager {
 					node.start(audioContext.currentTime, offset);
 					consecutiveDroppedBufferCount = 0;
 				} else {
+					console.debug(`[AudioManager] Dropped buffer: offset=${offset.toFixed(3)}s behind`);
 					consecutiveDroppedBufferCount += 1;
 					if (consecutiveDroppedBufferCount >= 5) {
 						const nextCompensationSeconds = Math.max(
@@ -300,8 +316,8 @@ export class AudioManager {
 			});
 
 			const aheadTime = timelineTime - this.getPlaybackTime();
-			if (aheadTime >= 1) {
-				await this.waitUntilCaughtUp({ timelineTime, targetAhead: 1 });
+			if (aheadTime >= 2) {
+				await this.waitUntilCaughtUp({ timelineTime, targetAhead: 1.5 });
 				if (sessionId !== this.playbackSessionId) return;
 			}
 		}

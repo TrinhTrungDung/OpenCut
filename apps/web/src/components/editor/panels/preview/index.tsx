@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import useDeepCompareEffect from "use-deep-compare-effect";
 import { useEditor } from "@/hooks/use-editor";
 import { useRafLoop } from "@/hooks/use-raf-loop";
@@ -12,8 +12,10 @@ import { buildScene } from "@/services/renderer/scene-builder";
 import { getLastFrameTime } from "@/lib/time";
 import { PreviewInteractionOverlay } from "./preview-interaction-overlay";
 import { BookmarkNoteOverlay } from "./bookmark-note-overlay";
+import { MediaSourcePreview } from "./media-source-preview";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { usePreviewStore } from "@/stores/preview-store";
+import { useMediaPreviewStore } from "@/stores/media-preview-store";
 import { PreviewContextMenu } from "./context-menu";
 import { PreviewToolbar } from "./toolbar";
 
@@ -30,18 +32,36 @@ function usePreviewSize() {
 export function PreviewPanel() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const { isFullscreen, toggleFullscreen } = useFullscreen({ containerRef });
+	const previewAsset = useMediaPreviewStore((s) => s.previewAsset);
+	const editor = useEditor();
+
+	/* Close media preview when user interacts with the timeline */
+	useEffect(() => {
+		if (!previewAsset) return;
+		/* Skip the first notification (initial state) */
+		let skipFirst = true;
+		const unsubscribe = editor.selection.subscribe(() => {
+			if (skipFirst) {
+				skipFirst = false;
+				return;
+			}
+			useMediaPreviewStore.getState().closePreview();
+		});
+		return unsubscribe;
+	}, [editor.selection, previewAsset]);
 
 	return (
 		<div
 			ref={containerRef}
 			className="panel bg-background relative flex size-full min-h-0 min-w-0 flex-col rounded-sm border"
 		>
-			<div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-2 pb-0">
+			<div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center p-2 pb-0">
 				<PreviewCanvas
 					onToggleFullscreen={toggleFullscreen}
 					containerRef={containerRef}
 				/>
 				<RenderTreeController />
+				{previewAsset && <MediaSourcePreview />}
 			</div>
 			<PreviewToolbar
 				isFullscreen={isFullscreen}

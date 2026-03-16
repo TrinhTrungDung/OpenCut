@@ -10,6 +10,7 @@ import { SoundsView } from "./views/sounds";
 import { StickersView } from "./views/stickers";
 import { TextView } from "./views/text";
 import { EffectsView } from "./views/effects";
+import { AIChatView } from "./views/ai-chat";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
@@ -36,6 +37,7 @@ export function AssetsPanel() {
 				Adjustment view coming soon...
 			</div>
 		),
+		ai: <AIChatView />,
 		settings: <SettingsView />,
 	};
 

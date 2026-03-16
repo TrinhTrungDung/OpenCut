@@ -37,3 +37,17 @@ export interface SavedSoundsData {
 	sounds: SavedSound[];
 	lastModified: string;
 }
+
+export interface ExtractedAudio {
+	id: string;
+	name: string;
+	sourceVideoName: string;
+	duration: number;
+	fileSize: number;
+	extractedAt: string;
+}
+
+export interface ExtractedAudioData {
+	items: ExtractedAudio[];
+	lastModified: string;
+}

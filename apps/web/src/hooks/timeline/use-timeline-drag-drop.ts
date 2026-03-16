@@ -287,8 +287,14 @@ export function useTimelineDragDrop({
 			const trackType: TrackType =
 				dragData.mediaType === "audio" ? "audio" : "video";
 
-			const duration =
+			const fullDuration =
 				mediaAsset.duration ?? TIMELINE_CONSTANTS.DEFAULT_ELEMENT_DURATION;
+			const hasTrim =
+				dragData.trimStart !== undefined && dragData.trimEnd !== undefined &&
+				(dragData.trimStart > 0 || dragData.trimEnd < fullDuration);
+			const duration = hasTrim
+				? dragData.trimEnd! - dragData.trimStart!
+				: fullDuration;
 			const element = buildElementFromMedia({
 				mediaId: mediaAsset.id,
 				mediaType: mediaAsset.type,
@@ -296,6 +302,11 @@ export function useTimelineDragDrop({
 				duration,
 				startTime: target.xPosition,
 			});
+
+			/* Apply trim if handles were set */
+			if (hasTrim && "trimStart" in element) {
+				(element as { trimStart: number }).trimStart = dragData.trimStart!;
+			}
 
 			if (target.isNewTrack) {
 				const addTrackCmd = new AddTrackCommand(trackType, target.trackIndex);

@@ -7,7 +7,8 @@ export type TActionCategory =
 	| "selection"
 	| "history"
 	| "timeline"
-	| "controls";
+	| "controls"
+	| "ai";
 
 export interface TActionDefinition {
 	description: string;
@@ -145,6 +146,19 @@ export const ACTIONS = {
 		description: "Redo",
 		category: "history",
 		defaultShortcuts: ["ctrl+shift+z", "ctrl+y"],
+	},
+	"open-ai-chat": {
+		description: "Open AI chat panel",
+		category: "ai",
+		defaultShortcuts: ["ctrl+shift+a"],
+	},
+	"ai-generate-subtitles": {
+		description: "Generate AI subtitles",
+		category: "ai",
+	},
+	"ai-analyze-video": {
+		description: "Analyze video with AI",
+		category: "ai",
 	},
 } as const satisfies Record<string, TActionDefinition>;
 
