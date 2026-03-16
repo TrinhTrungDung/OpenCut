@@ -12,6 +12,7 @@ import { extractTimelineAudio } from "@/lib/media/mediabunny";
 import { useEditor } from "@/hooks/use-editor";
 import { DEFAULT_TEXT_ELEMENT } from "@/constants/text-constants";
 import { TRANSCRIPTION_LANGUAGES } from "@/constants/transcription-constants";
+import { LANGUAGES } from "@/constants/language-constants";
 import type {
 	TranscriptionLanguage,
 	TranscriptionProgress,
@@ -28,8 +29,7 @@ import { aiSubtitleGenerator } from "@/services/ai/subtitle-generator";
 type CaptionProvider = "local" | "gemini";
 
 export function Captions() {
-	const [selectedLanguage, setSelectedLanguage] =
-		useState<TranscriptionLanguage>("auto");
+	const [selectedLanguage, setSelectedLanguage] = useState<string>("auto");
 	const [provider, setProvider] = useState<CaptionProvider>("local");
 	const [targetLanguage, setTargetLanguage] = useState<string>("none");
 	const [isProcessing, setIsProcessing] = useState(false);
@@ -50,7 +50,39 @@ export function Captions() {
 		}
 	};
 
+	const wrapCaptionText = (text: string, maxCharsPerLine = 42): string => {
+		if (text.length <= maxCharsPerLine) return text;
+		/* Find a break point near the middle, preferring word boundaries */
+		const mid = Math.ceil(text.length / 2);
+		const spaceAfter = text.indexOf(" ", mid);
+		const spaceBefore = text.lastIndexOf(" ", mid);
+		const breakAt =
+			spaceBefore > 0
+				? spaceAfter >= 0 && spaceAfter - mid < mid - spaceBefore
+					? spaceAfter
+					: spaceBefore
+				: spaceAfter >= 0
+					? spaceAfter
+					: mid;
+		return `${text.slice(0, breakAt)}\n${text.slice(breakAt + 1)}`;
+	};
+
 	const insertCaptions = (captionChunks: CaptionChunk[]) => {
+		const canvasHeight =
+			editor.project.getActive().settings.canvasSize.height;
+
+		/* Remove existing caption tracks (text tracks named "Caption *") */
+		const tracks = editor.timeline.getTracks();
+		for (const track of tracks) {
+			if (
+				track.type === "text" &&
+				track.elements.length > 0 &&
+				track.elements[0].name.startsWith("Caption ")
+			) {
+				editor.timeline.removeTrack({ trackId: track.id });
+			}
+		}
+
 		const captionTrackId = editor.timeline.addTrack({
 			type: "text",
 			index: 0,
@@ -63,11 +95,16 @@ export function Captions() {
 				element: {
 					...DEFAULT_TEXT_ELEMENT,
 					name: `Caption ${i + 1}`,
-					content: caption.text,
+					content: wrapCaptionText(caption.text),
 					duration: caption.duration,
 					startTime: caption.startTime,
-					fontSize: 65,
+					fontSize: 5,
 					fontWeight: "bold",
+					transform: {
+						scale: 1,
+						position: { x: 0, y: canvasHeight * 0.35 },
+						rotate: 0,
+					},
 				},
 			});
 		}
@@ -92,13 +129,13 @@ export function Captions() {
 
 		const sourceLangName =
 			selectedLanguage === "auto"
-				? "Auto detect"
-				: TRANSCRIPTION_LANGUAGES.find((l) => l.code === selectedLanguage)
-						?.name ?? selectedLanguage;
+				? undefined
+				: LANGUAGES.find((l) => l.code === selectedLanguage)?.name ??
+					selectedLanguage;
 
 		const targetLangName =
 			targetLanguage !== "none"
-				? TRANSCRIPTION_LANGUAGES.find((l) => l.code === targetLanguage)?.name
+				? LANGUAGES.find((l) => l.code === targetLanguage)?.name
 				: undefined;
 
 		const captionChunks = await aiSubtitleGenerator.generateSubtitles({
@@ -149,11 +186,13 @@ export function Captions() {
 			return;
 		}
 
-		const matchedLanguage = TRANSCRIPTION_LANGUAGES.find(
+		const languageList =
+			provider === "gemini" ? LANGUAGES : TRANSCRIPTION_LANGUAGES;
+		const matchedLanguage = languageList.find(
 			(language) => language.code === value,
 		);
 		if (!matchedLanguage) return;
-		setSelectedLanguage(matchedLanguage.code);
+		setSelectedLanguage(matchedLanguage.code as TranscriptionLanguage);
 	};
 
 	return (
@@ -187,11 +226,13 @@ export function Captions() {
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="auto">Auto detect</SelectItem>
-						{TRANSCRIPTION_LANGUAGES.map((language) => (
-							<SelectItem key={language.code} value={language.code}>
-								{language.name}
-							</SelectItem>
-						))}
+						{(provider === "gemini" ? LANGUAGES : TRANSCRIPTION_LANGUAGES).map(
+							(language) => (
+								<SelectItem key={language.code} value={language.code}>
+									{language.name}
+								</SelectItem>
+							),
+						)}
 					</SelectContent>
 				</Select>
 			</div>
@@ -205,7 +246,7 @@ export function Captions() {
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="none">None (original language)</SelectItem>
-							{TRANSCRIPTION_LANGUAGES.map((language) => (
+							{LANGUAGES.map((language) => (
 								<SelectItem key={language.code} value={language.code}>
 									{language.name}
 								</SelectItem>

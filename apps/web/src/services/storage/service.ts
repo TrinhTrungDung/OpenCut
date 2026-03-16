@@ -9,7 +9,13 @@ import type {
 	SerializedProject,
 	SerializedScene,
 } from "./types";
-import type { SavedSoundsData, SavedSound, SoundEffect } from "@/types/sounds";
+import type {
+	SavedSoundsData,
+	SavedSound,
+	SoundEffect,
+	ExtractedAudioData,
+	ExtractedAudio,
+} from "@/types/sounds";
 import {
 	migrations,
 	runStorageMigrations,
@@ -42,6 +48,8 @@ function normalizeBookmarks({ raw }: { raw: unknown }): Bookmark[] {
 class StorageService {
 	private projectsAdapter: IndexedDBAdapter<SerializedProject>;
 	private savedSoundsAdapter: IndexedDBAdapter<SavedSoundsData>;
+	private extractedAudioMetaAdapter: IndexedDBAdapter<ExtractedAudioData>;
+	private extractedAudioBlobAdapter: IndexedDBAdapter<{ data: Blob }>;
 	private config: StorageConfig;
 	private migrationsPromise: Promise<void> | null = null;
 
@@ -62,6 +70,18 @@ class StorageService {
 		this.savedSoundsAdapter = new IndexedDBAdapter<SavedSoundsData>(
 			this.config.savedSoundsDb,
 			"saved-sounds",
+			this.config.version,
+		);
+
+		this.extractedAudioMetaAdapter = new IndexedDBAdapter<ExtractedAudioData>(
+			"video-editor-extracted-audio",
+			"extracted-audio-meta",
+			this.config.version,
+		);
+
+		this.extractedAudioBlobAdapter = new IndexedDBAdapter<{ data: Blob }>(
+			"video-editor-extracted-audio-blobs",
+			"extracted-audio-blobs",
 			this.config.version,
 		);
 	}
@@ -473,6 +493,57 @@ class StorageService {
 			console.error("Failed to clear saved sounds:", error);
 			throw error;
 		}
+	}
+
+	async loadExtractedAudio(): Promise<ExtractedAudioData> {
+		try {
+			const data = await this.extractedAudioMetaAdapter.get("extracted-audio");
+			return data || { items: [], lastModified: new Date().toISOString() };
+		} catch (error) {
+			console.error("Failed to load extracted audio:", error);
+			return { items: [], lastModified: new Date().toISOString() };
+		}
+	}
+
+	async saveExtractedAudio({
+		item,
+		blob,
+	}: {
+		item: ExtractedAudio;
+		blob: Blob;
+	}): Promise<void> {
+		const currentData = await this.loadExtractedAudio();
+		const updatedData: ExtractedAudioData = {
+			items: [...currentData.items, item],
+			lastModified: new Date().toISOString(),
+		};
+		await this.extractedAudioMetaAdapter.set("extracted-audio", updatedData);
+		await this.extractedAudioBlobAdapter.set(item.id, { data: blob });
+	}
+
+	async removeExtractedAudio({ id }: { id: string }): Promise<void> {
+		const currentData = await this.loadExtractedAudio();
+		const updatedData: ExtractedAudioData = {
+			items: currentData.items.filter((item) => item.id !== id),
+			lastModified: new Date().toISOString(),
+		};
+		await this.extractedAudioMetaAdapter.set("extracted-audio", updatedData);
+		await this.extractedAudioBlobAdapter.remove(id);
+	}
+
+	async getExtractedAudioBlob({ id }: { id: string }): Promise<Blob | null> {
+		try {
+			const result = await this.extractedAudioBlobAdapter.get(id);
+			return result?.data ?? null;
+		} catch (error) {
+			console.error("Failed to get extracted audio blob:", error);
+			return null;
+		}
+	}
+
+	async clearExtractedAudio(): Promise<void> {
+		await this.extractedAudioMetaAdapter.clear();
+		await this.extractedAudioBlobAdapter.clear();
 	}
 
 	isOPFSSupported(): boolean {

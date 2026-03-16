@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -24,14 +24,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useSoundSearch } from "@/hooks/use-sound-search";
 import { useSoundsStore } from "@/stores/sounds-store";
-import type { SavedSound, SoundEffect } from "@/types/sounds";
+import type { ExtractedAudio, SavedSound, SoundEffect } from "@/types/sounds";
 import { cn } from "@/utils/ui";
 import {
+	Delete02Icon,
 	FavouriteIcon,
 	FilterMailIcon,
+	MusicNote03Icon,
 	PauseIcon,
 	PlayIcon,
 	PlusSignIcon,
+	Upload02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
@@ -44,6 +47,7 @@ export function SoundsView() {
 						<TabsTrigger value="sound-effects">Sound effects</TabsTrigger>
 						<TabsTrigger value="songs">Songs</TabsTrigger>
 						<TabsTrigger value="saved">Saved</TabsTrigger>
+						<TabsTrigger value="extracted">Extracted</TabsTrigger>
 					</TabsList>
 				</div>
 				<Separator className="my-4" />
@@ -64,6 +68,12 @@ export function SoundsView() {
 					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
 				>
 					<SongsView />
+				</TabsContent>
+				<TabsContent
+					value="extracted"
+					className="mt-0 flex min-h-0 flex-1 flex-col p-5 pt-0"
+				>
+					<ExtractedAudioView />
 				</TabsContent>
 			</Tabs>
 		</div>
@@ -487,6 +497,270 @@ function SavedSoundsView() {
 
 function SongsView() {
 	return <div>Songs</div>;
+}
+
+const VIDEO_ACCEPT =
+	".mp4,.webm,.mov,.avi,.mkv,.flv,.wmv,.m4v,.3gp,.ogv,video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska,video/x-flv,video/x-ms-wmv,video/x-m4v,video/3gpp,video/ogg";
+
+function formatDuration({ seconds }: { seconds: number }): string {
+	const mins = Math.floor(seconds / 60);
+	const secs = Math.floor(seconds % 60);
+	return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function formatFileSize({ bytes }: { bytes: number }): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ExtractedAudioView() {
+	const {
+		extractedAudios,
+		isExtracting,
+		extractionProgress,
+		extractionError,
+		loadExtractedAudios,
+		extractAudioFromVideo,
+		clearExtractedAudios,
+	} = useSoundsStore();
+
+	const [showClearDialog, setShowClearDialog] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		loadExtractedAudios();
+	}, [loadExtractedAudios]);
+
+	const handleImportVideo = () => {
+		fileInputRef.current?.click();
+	};
+
+	const handleFileChange = async (
+		event: React.ChangeEvent<HTMLInputElement>,
+	) => {
+		const file = event.target.files?.[0];
+		if (!file) return;
+
+		await extractAudioFromVideo({ file });
+
+		// Reset input so same file can be selected again
+		if (fileInputRef.current) {
+			fileInputRef.current.value = "";
+		}
+	};
+
+	return (
+		<div className="mt-1 flex h-full flex-col gap-5">
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept={VIDEO_ACCEPT}
+				className="hidden"
+				onChange={handleFileChange}
+			/>
+
+			<div className="flex items-center justify-between gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={handleImportVideo}
+					disabled={isExtracting}
+					className="gap-2"
+				>
+					<HugeiconsIcon icon={Upload02Icon} className="size-4" />
+					Import video
+				</Button>
+				{extractedAudios.length > 0 && (
+					<Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+						<DialogTrigger asChild>
+							<Button
+								variant="text"
+								size="sm"
+								className="text-muted-foreground hover:text-destructive h-auto !opacity-100"
+							>
+								Clear all
+							</Button>
+						</DialogTrigger>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Clear all extracted audio?</DialogTitle>
+								<DialogDescription>
+									This will permanently remove all {extractedAudios.length}{" "}
+									extracted audio files. This action cannot be undone.
+								</DialogDescription>
+							</DialogHeader>
+							<DialogFooter>
+								<Button
+									variant="text"
+									onClick={() => setShowClearDialog(false)}
+								>
+									Cancel
+								</Button>
+								<Button
+									variant="destructive"
+									onClick={async () => {
+										await clearExtractedAudios();
+										setShowClearDialog(false);
+									}}
+								>
+									Clear all
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+				)}
+			</div>
+
+			{isExtracting && (
+				<div className="flex flex-col gap-2">
+					<div className="text-muted-foreground text-sm">
+						Extracting audio... {Math.round(extractionProgress)}%
+					</div>
+					<div className="bg-accent h-1.5 w-full overflow-hidden rounded-full">
+						<div
+							className="bg-primary h-full rounded-full transition-all duration-300"
+							style={{ width: `${extractionProgress}%` }}
+						/>
+					</div>
+				</div>
+			)}
+
+			{extractionError && !isExtracting && (
+				<div className="text-destructive text-sm">{extractionError}</div>
+			)}
+
+			{extractedAudios.length === 0 && !isExtracting ? (
+				<div className="bg-background flex h-full flex-col items-center justify-center gap-3 p-4">
+					<HugeiconsIcon
+						icon={MusicNote03Icon}
+						className="text-muted-foreground size-10"
+					/>
+					<div className="flex flex-col gap-2 text-center">
+						<p className="text-lg font-medium">No extracted audio</p>
+						<p className="text-muted-foreground text-sm text-balance">
+							Import a video file to extract its audio track
+						</p>
+					</div>
+				</div>
+			) : (
+				<div className="relative h-full overflow-hidden">
+					<ScrollArea className="h-full flex-1">
+						<div className="flex flex-col gap-4">
+							{extractedAudios.map((audio) => (
+								<ExtractedAudioItem key={audio.id} audio={audio} />
+							))}
+						</div>
+					</ScrollArea>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function ExtractedAudioItem({ audio }: { audio: ExtractedAudio }) {
+	const { addExtractedToTimeline, removeExtractedAudio } = useSoundsStore();
+	const [isPlaying, setIsPlaying] = useState(false);
+	const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
+		null,
+	);
+
+	const handlePlay = async () => {
+		if (isPlaying && audioElement) {
+			audioElement.pause();
+			setIsPlaying(false);
+			return;
+		}
+
+		audioElement?.pause();
+
+		try {
+			const { storageService } = await import("@/services/storage/service");
+			const blob = await storageService.getExtractedAudioBlob({
+				id: audio.id,
+			});
+			if (!blob) return;
+
+			const url = URL.createObjectURL(blob);
+			const newAudio = new Audio(url);
+			newAudio.addEventListener("ended", () => {
+				setIsPlaying(false);
+				URL.revokeObjectURL(url);
+			});
+			newAudio.addEventListener("error", () => {
+				setIsPlaying(false);
+				URL.revokeObjectURL(url);
+			});
+			await newAudio.play();
+			setAudioElement(newAudio);
+			setIsPlaying(true);
+		} catch (error) {
+			console.error("Failed to play extracted audio:", error);
+			setIsPlaying(false);
+		}
+	};
+
+	const handleAddToTimeline = async (e: React.MouseEvent<HTMLButtonElement>) => {
+		e.stopPropagation();
+		await addExtractedToTimeline({ extractedAudio: audio });
+	};
+
+	const handleDelete = async (e: React.MouseEvent<HTMLButtonElement>) => {
+		e.stopPropagation();
+		if (isPlaying && audioElement) {
+			audioElement.pause();
+			setIsPlaying(false);
+		}
+		await removeExtractedAudio({ id: audio.id });
+	};
+
+	return (
+		<div className="group flex items-center gap-3 opacity-100 hover:opacity-75">
+			<button
+				type="button"
+				className="flex min-w-0 flex-1 items-center gap-3 text-left"
+				onClick={handlePlay}
+			>
+				<div className="bg-accent relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md">
+					<div className="from-primary/20 absolute inset-0 bg-gradient-to-br to-transparent" />
+					{isPlaying ? (
+						<HugeiconsIcon icon={PauseIcon} className="size-5" />
+					) : (
+						<HugeiconsIcon icon={PlayIcon} className="size-5" />
+					)}
+				</div>
+
+				<div className="min-w-0 flex-1 overflow-hidden">
+					<p className="truncate text-sm font-medium">{audio.name}</p>
+					<span className="text-muted-foreground block truncate text-xs">
+						{formatDuration({ seconds: audio.duration })} &middot;{" "}
+						{formatFileSize({ bytes: audio.fileSize })}
+					</span>
+				</div>
+			</button>
+
+			<div className="flex items-center gap-3 pr-2">
+				<Button
+					variant="text"
+					size="icon"
+					className="text-muted-foreground hover:text-foreground w-auto !opacity-100"
+					onClick={handleAddToTimeline}
+					title="Add to timeline"
+				>
+					<HugeiconsIcon icon={PlusSignIcon} />
+				</Button>
+				<Button
+					variant="text"
+					size="icon"
+					className="text-muted-foreground hover:text-destructive w-auto !opacity-100"
+					onClick={handleDelete}
+					title="Delete extracted audio"
+				>
+					<HugeiconsIcon icon={Delete02Icon} />
+				</Button>
+			</div>
+		</div>
+	);
 }
 
 interface AudioItemProps {

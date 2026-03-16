@@ -171,7 +171,7 @@ async function decodeAndMixAudioSource({
 	}
 }
 
-function createWavBlob({ samples }: { samples: Float32Array }): Blob {
+export function createWavBlob({ samples }: { samples: Float32Array }): Blob {
 	const numChannels = NUM_CHANNELS;
 	const bitsPerSample = 16;
 	const bytesPerSample = bitsPerSample / 8;

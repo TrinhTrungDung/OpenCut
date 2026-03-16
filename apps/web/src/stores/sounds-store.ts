@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import type { SoundEffect, SavedSound } from "@/types/sounds";
+import type { SoundEffect, SavedSound, ExtractedAudio } from "@/types/sounds";
 import { storageService } from "@/services/storage/service";
 import { toast } from "sonner";
 import { EditorCore } from "@/core";
 import { buildLibraryAudioElement } from "@/lib/timeline/element-utils";
+import { extractAudioFromVideo as extractAudio } from "@/lib/media/extract-audio-from-video";
 
 interface SoundsStore {
 	topSoundEffects: SoundEffect[];
@@ -26,6 +27,22 @@ interface SoundsStore {
 	isSavedSoundsLoaded: boolean;
 	isLoadingSavedSounds: boolean;
 	savedSoundsError: string | null;
+
+	extractedAudios: ExtractedAudio[];
+	isExtractedLoaded: boolean;
+	isExtracting: boolean;
+	extractionProgress: number;
+	extractionError: string | null;
+
+	loadExtractedAudios: () => Promise<void>;
+	extractAudioFromVideo: ({ file }: { file: File }) => Promise<void>;
+	removeExtractedAudio: ({ id }: { id: string }) => Promise<void>;
+	addExtractedToTimeline: ({
+		extractedAudio,
+	}: {
+		extractedAudio: ExtractedAudio;
+	}) => Promise<boolean>;
+	clearExtractedAudios: () => Promise<void>;
 
 	addSoundToTimeline: ({ sound }: { sound: SoundEffect }) => Promise<boolean>;
 	setTopSoundEffects: ({ sounds }: { sounds: SoundEffect[] }) => void;
@@ -87,6 +104,12 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	isLoadingSavedSounds: false,
 	savedSoundsError: null,
 
+	extractedAudios: [],
+	isExtractedLoaded: false,
+	isExtracting: false,
+	extractionProgress: 0,
+	extractionError: null,
+
 	setTopSoundEffects: ({ sounds }) => set({ topSoundEffects: sounds }),
 	setLoading: ({ loading }) => set({ isLoading: loading }),
 	setError: ({ error }) => set({ error }),
@@ -120,6 +143,147 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			totalCount: 0,
 			isLoadingMore: false,
 		}),
+
+	loadExtractedAudios: async () => {
+		if (get().isExtractedLoaded) return;
+
+		try {
+			const data = await storageService.loadExtractedAudio();
+			set({
+				extractedAudios: data.items,
+				isExtractedLoaded: true,
+			});
+		} catch (error) {
+			console.error("Failed to load extracted audios:", error);
+			set({
+				extractionError:
+					error instanceof Error
+						? error.message
+						: "Failed to load extracted audios",
+			});
+		}
+	},
+
+	extractAudioFromVideo: async ({ file }) => {
+		try {
+			set({ isExtracting: true, extractionProgress: 0, extractionError: null });
+
+			const { blob, duration } = await extractAudio({
+				file,
+				onProgress: ({ progress }) => {
+					set({ extractionProgress: progress });
+				},
+			});
+
+			const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+			const item: ExtractedAudio = {
+				id: crypto.randomUUID(),
+				name: `${nameWithoutExt} (audio)`,
+				sourceVideoName: file.name,
+				duration,
+				fileSize: blob.size,
+				extractedAt: new Date().toISOString(),
+			};
+
+			await storageService.saveExtractedAudio({ item, blob });
+
+			set((state) => ({
+				extractedAudios: [...state.extractedAudios, item],
+				isExtracting: false,
+				extractionProgress: 100,
+			}));
+
+			toast.success("Audio extracted successfully");
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : "Failed to extract audio";
+			set({
+				isExtracting: false,
+				extractionProgress: 0,
+				extractionError: errorMessage,
+			});
+			toast.error(errorMessage);
+			console.error("Failed to extract audio:", error);
+		}
+	},
+
+	removeExtractedAudio: async ({ id }) => {
+		try {
+			await storageService.removeExtractedAudio({ id });
+			set((state) => ({
+				extractedAudios: state.extractedAudios.filter(
+					(audio) => audio.id !== id,
+				),
+			}));
+		} catch (error) {
+			toast.error("Failed to remove extracted audio");
+			console.error("Failed to remove extracted audio:", error);
+		}
+	},
+
+	addExtractedToTimeline: async ({ extractedAudio }) => {
+		try {
+			const blob = await storageService.getExtractedAudioBlob({
+				id: extractedAudio.id,
+			});
+			if (!blob) {
+				toast.error("Audio file not found");
+				return false;
+			}
+
+			const blobUrl = URL.createObjectURL(blob);
+
+			const editor = EditorCore.getInstance();
+			const currentTime = editor.playback.getCurrentTime();
+			const tracks = editor.timeline.getTracks();
+
+			const audioContext = new AudioContext();
+			const arrayBuffer = await blob.arrayBuffer();
+			const buffer = await audioContext.decodeAudioData(arrayBuffer);
+
+			const audioTrack = tracks.find((t) => t.type === "audio");
+			let trackId: string;
+
+			if (audioTrack) {
+				trackId = audioTrack.id;
+			} else {
+				trackId = editor.timeline.addTrack({ type: "audio" });
+			}
+
+			const element = buildLibraryAudioElement({
+				sourceUrl: blobUrl,
+				name: extractedAudio.name,
+				duration: extractedAudio.duration,
+				startTime: currentTime,
+				buffer,
+			});
+
+			editor.timeline.insertElement({
+				placement: { mode: "explicit", trackId },
+				element,
+			});
+
+			return true;
+		} catch (error) {
+			console.error("Failed to add extracted audio to timeline:", error);
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Failed to add audio to timeline",
+			);
+			return false;
+		}
+	},
+
+	clearExtractedAudios: async () => {
+		try {
+			await storageService.clearExtractedAudio();
+			set({ extractedAudios: [], extractionError: null });
+		} catch (error) {
+			toast.error("Failed to clear extracted audios");
+			console.error("Failed to clear extracted audios:", error);
+		}
+	},
 
 	loadSavedSounds: async () => {
 		if (get().isSavedSoundsLoaded) return;
