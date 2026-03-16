@@ -54,6 +54,8 @@ export function SpeedSection({
 	const editor = useEditor();
 	const speed = element.speed ?? DEFAULT_SPEED;
 	const isScrubbing = useRef(false);
+	const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const pendingScrubValue = useRef<number | null>(null);
 	const [isCurveMode, setIsCurveMode] = useState(
 		() => (element.speedCurve?.length ?? 0) > 0,
 	);
@@ -96,22 +98,45 @@ export function SpeedSection({
 		updateSpeed(speed);
 	};
 
-	/** Preview during scrub — no undo history, no audio restart */
-	const handleScrub = (value: number) => {
-		const updates = buildSpeedUpdates(value);
-		isScrubbing.current = true;
+	/** Throttled preview during scrub — max ~15 updates/sec instead of 60+ */
+	const SCRUB_THROTTLE_MS = 67;
+
+	const flushScrub = useCallback(() => {
+		if (pendingScrubValue.current === null) return;
+		const updates = buildSpeedUpdates(pendingScrubValue.current);
+		pendingScrubValue.current = null;
 		editor.timeline.previewElements({
 			updates: [{ trackId, elementId: element.id, updates }],
 		});
+	}, [buildSpeedUpdates, editor, trackId, element.id]);
+
+	const handleScrub = (value: number) => {
+		isScrubbing.current = true;
+		pendingScrubValue.current = value;
+		if (!scrubTimer.current) {
+			flushScrub();
+			scrubTimer.current = setTimeout(() => {
+				scrubTimer.current = null;
+				flushScrub();
+			}, SCRUB_THROTTLE_MS);
+		}
 	};
 
 	/** Commit the preview on scrub end */
 	const handleScrubEnd = useCallback(() => {
+		if (scrubTimer.current) {
+			clearTimeout(scrubTimer.current);
+			scrubTimer.current = null;
+		}
 		if (isScrubbing.current) {
+			/* Apply the final pending value before committing */
+			if (pendingScrubValue.current !== null) {
+				flushScrub();
+			}
 			isScrubbing.current = false;
 			editor.timeline.commitPreview();
 		}
-	}, [editor]);
+	}, [editor, flushScrub]);
 
 	const handleCurveChange = (points: SpeedCurvePoint[]) => {
 		editor.timeline.updateElements({

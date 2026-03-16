@@ -131,10 +131,10 @@ export class AudioManager {
 	};
 
 	/**
-	 * Build a fingerprint from audio-structural properties only.
-	 * Excludes speed/duration (speed changes shouldn't restart audio —
-	 * playbackRate handles that live). Only structural changes like
-	 * adding/removing clips, muting, or repositioning trigger restart.
+	 * Build a fingerprint from audio-relevant properties.
+	 * Includes speed so audio restarts with correct playbackRate after
+	 * speed changes are committed. Preview-mode changes are debounced
+	 * and throttled at the UI layer so this won't fire during scrub.
 	 */
 	private computeClipFingerprint(): string {
 		const tracks = this.editor.timeline.getTracks();
@@ -144,7 +144,8 @@ export class AudioManager {
 			for (const el of track.elements) {
 				if (el.type !== "audio" && el.type !== "video") continue;
 				const elMuted = "muted" in el ? el.muted : false;
-				parts.push(`${el.id}:${el.startTime}:${el.trimStart}:${muted || elMuted}`);
+				const elSpeed = el.speed ?? 1;
+				parts.push(`${el.id}:${el.startTime}:${el.trimStart}:${muted || elMuted}:${elSpeed}`);
 			}
 		}
 		return parts.join("|");
