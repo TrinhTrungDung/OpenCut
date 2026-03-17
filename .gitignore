@@ -58,6 +58,10 @@ next-env.d.ts
 build
 GoogleService-Info.plist
 
+# tauri / rust
+**/src-tauri/target/
+**/Cargo.lock
+
 repomix-output.xml
 .serena/cache
 plans/**/*

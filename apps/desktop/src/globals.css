@@ -1,0 +1,18 @@
+/* Desktop-specific: load Inter font via CSS (no next/font) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Import the web app's styles — all Tailwind config, theme tokens, and utilities */
+@import "../../web/src/app/globals.css";
+
+body {
+  font-family: 'Inter', sans-serif;
+  /* Prevent text selection on UI elements (native feel) */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in input fields and text areas */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
