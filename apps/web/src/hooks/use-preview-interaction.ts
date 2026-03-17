@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditor } from "@/hooks/use-editor";
 import { useShiftKey } from "@/hooks/use-shift-key";
-import type { TextElement, Transform } from "@/types/timeline";
+import type { TextElement, TimelineElement, Transform } from "@/types/timeline";
+import type { ElementAnimations, NumberAnimationChannel } from "@/types/animation";
 import { getVisibleElementsWithBounds } from "@/lib/preview/element-bounds";
 import { hitTest } from "@/lib/preview/hit-test";
 import {
@@ -17,6 +18,51 @@ import {
 
 const MIN_DRAG_DISTANCE = 0.5;
 
+/**
+ * Offset position animation keyframes by the drag delta.
+ * When an element has `transform.position.x/y` keyframes (e.g. slide animations),
+ * dragging must shift those keyframe values too, otherwise the animation
+ * overrides the base transform and locks movement on that axis.
+ */
+function offsetPositionKeyframes({
+	animations,
+	deltaX,
+	deltaY,
+}: {
+	animations: ElementAnimations;
+	deltaX: number;
+	deltaY: number;
+}): ElementAnimations | null {
+	const xChannel = animations.channels["transform.position.x"] as NumberAnimationChannel | undefined;
+	const yChannel = animations.channels["transform.position.y"] as NumberAnimationChannel | undefined;
+
+	if (!xChannel && !yChannel) return null;
+
+	const channels = { ...animations.channels };
+
+	if (xChannel && deltaX !== 0) {
+		channels["transform.position.x"] = {
+			...xChannel,
+			keyframes: xChannel.keyframes.map((kf) => ({
+				...kf,
+				value: kf.value + deltaX,
+			})),
+		};
+	}
+
+	if (yChannel && deltaY !== 0) {
+		channels["transform.position.y"] = {
+			...yChannel,
+			keyframes: yChannel.keyframes.map((kf) => ({
+				...kf,
+				value: kf.value + deltaY,
+			})),
+		};
+	}
+
+	return { channels };
+}
+
 interface DragState {
 	startX: number;
 	startY: number;
@@ -28,6 +74,7 @@ interface DragState {
 		trackId: string;
 		elementId: string;
 		initialTransform: Transform;
+		initialAnimations: ElementAnimations | undefined;
 	}>;
 }
 
@@ -199,6 +246,7 @@ export function usePreviewInteraction({
 					trackId: track.id,
 					elementId: element.id,
 					initialTransform: (element as { transform: Transform }).transform,
+					initialAnimations: (element as TimelineElement & { animations?: ElementAnimations }).animations,
 				})),
 			};
 
@@ -261,10 +309,8 @@ export function usePreviewInteraction({
 				snappedPosition.y - firstElement.initialTransform.position.y;
 
 			const updates = dragStateRef.current.elements.map(
-				({ trackId, elementId, initialTransform }) => ({
-					trackId,
-					elementId,
-					updates: {
+				({ trackId, elementId, initialTransform, initialAnimations }) => {
+					const result: Record<string, unknown> = {
 						transform: {
 							...initialTransform,
 							position: {
@@ -272,8 +318,22 @@ export function usePreviewInteraction({
 								y: initialTransform.position.y + deltaSnappedY,
 							},
 						},
-					},
-				}),
+					};
+
+					/* Offset position animation keyframes so they move with the drag */
+					if (initialAnimations) {
+						const offsetAnimations = offsetPositionKeyframes({
+							animations: initialAnimations,
+							deltaX: deltaSnappedX,
+							deltaY: deltaSnappedY,
+						});
+						if (offsetAnimations) {
+							result.animations = offsetAnimations;
+						}
+					}
+
+					return { trackId, elementId, updates: result };
+				},
 			);
 
 			editor.timeline.previewElements({ updates });

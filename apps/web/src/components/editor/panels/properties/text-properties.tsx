@@ -2,7 +2,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FontPicker } from "@/components/ui/font-picker";
 import type { TextElement } from "@/types/timeline";
 import { NumberField } from "@/components/ui/number-field";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
 	Section,
 	SectionContent,
@@ -43,6 +43,21 @@ import {
 } from "@hugeicons/core-free-icons";
 import { OcTextHeightIcon, OcTextWidthIcon } from "@opencut/ui/icons";
 import { cn } from "@/utils/ui";
+import { TextPresetsTab } from "./text-presets-tab";
+import { TextAnimationTab } from "./text-animation-tab";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+type TextPropertiesTab = "presets" | "basic" | "animation";
+
+const TEXT_PROPERTY_TABS: Array<{
+	id: TextPropertiesTab;
+	label: string;
+	icon: string;
+}> = [
+	{ id: "presets", label: "Presets", icon: "⬡" },
+	{ id: "basic", label: "Basic", icon: "T" },
+	{ id: "animation", label: "Animate", icon: "◎" },
+];
 
 export function TextProperties({
 	element,
@@ -51,8 +66,57 @@ export function TextProperties({
 	element: TextElement;
 	trackId: string;
 }) {
+	const [activeTab, setActiveTab] = useState<TextPropertiesTab>("basic");
+
 	return (
-		<div className="flex h-full flex-col">
+		<div className="flex h-full">
+			{/* Vertical tab sidebar */}
+			<div className="border-r flex flex-col items-center gap-1 py-2 px-1 shrink-0">
+				{TEXT_PROPERTY_TABS.map((tab) => (
+					<button
+						key={tab.id}
+						type="button"
+						onClick={() => setActiveTab(tab.id)}
+						className={cn(
+							"flex flex-col items-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] transition-colors w-14",
+							activeTab === tab.id
+								? "bg-primary text-primary-foreground"
+								: "text-muted-foreground hover:bg-accent hover:text-foreground",
+						)}
+						title={tab.label}
+					>
+						<span className="text-sm leading-none">{tab.icon}</span>
+						<span className="leading-none">{tab.label}</span>
+					</button>
+				))}
+			</div>
+
+			{/* Tab content */}
+			<div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin">
+				{activeTab === "presets" && (
+					<TextPresetsTab element={element} trackId={trackId} />
+				)}
+				{activeTab === "basic" && (
+					<TextBasicTab element={element} trackId={trackId} />
+				)}
+				{activeTab === "animation" && (
+					<TextAnimationTab element={element} trackId={trackId} />
+				)}
+			</div>
+		</div>
+	);
+}
+
+/** Basic tab — the existing text properties (content, transform, typography, etc.) */
+function TextBasicTab({
+	element,
+	trackId,
+}: {
+	element: TextElement;
+	trackId: string;
+}) {
+	return (
+		<div className="flex flex-col">
 			<ContentSection element={element} trackId={trackId} />
 			<TransformSection element={element} trackId={trackId} />
 			<BlendingSection element={element} trackId={trackId} />

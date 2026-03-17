@@ -5,6 +5,9 @@ import {
 	TIMELINE_CONSTANTS,
 } from "./timeline-constants";
 
+/** Default scale for text elements added from templates/presets (52% in UI) */
+export const DEFAULT_TEXT_TEMPLATE_SCALE = 0.52;
+
 export const MIN_FONT_SIZE = 5;
 export const MAX_FONT_SIZE = 300;
 

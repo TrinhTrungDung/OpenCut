@@ -19,11 +19,12 @@ export function TransitionHandle({ side, onDrag }: TransitionHandleProps) {
 			const target = e.currentTarget;
 			target.setPointerCapture(e.pointerId);
 
-			const handleMove = (moveEvent: PointerEvent) => {
-				const deltaPx = moveEvent.clientX - startXRef.current;
+			const handleMove = (moveEvent: Event) => {
+				const pe = moveEvent as PointerEvent;
+				const deltaPx = pe.clientX - startXRef.current;
 				if (deltaPx !== 0) {
 					onDrag({ deltaPx });
-					startXRef.current = moveEvent.clientX;
+					startXRef.current = pe.clientX;
 				}
 			};
 

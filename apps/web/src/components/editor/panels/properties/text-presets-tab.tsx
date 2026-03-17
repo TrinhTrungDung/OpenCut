@@ -1,16 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { DraggableItem } from "@/components/editor/panels/assets/draggable-item";
-import { PanelView } from "@/components/editor/panels/assets/views/base-view";
 import { Input } from "@/components/ui/input";
+import type { TextElement } from "@/types/timeline";
 import { useEditor } from "@/hooks/use-editor";
-import { DEFAULT_TEXT_ELEMENT } from "@/constants/text-constants";
-import { buildTextElement } from "@/lib/timeline/element-utils";
 import {
 	getAllTextTemplates,
 	searchTextTemplates,
-	applyTextTemplate,
 } from "@/lib/text/templates";
 import type { TextTemplate, TextTemplateCategory } from "@/types/text-templates";
 import {
@@ -18,51 +14,89 @@ import {
 	TEXT_TEMPLATE_CATEGORY_ORDER,
 } from "@/types/text-templates";
 import { cn } from "@/utils/ui";
+import { generateUUID } from "@/utils/id";
 import { loadFullFont } from "@/lib/fonts/google-fonts";
+import { DEFAULT_TEXT_TEMPLATE_SCALE } from "@/constants/text-constants";
 
-export function TextView() {
+/**
+ * Presets tab in the text properties panel.
+ * Applies a template's visual style to the currently selected text element
+ * without changing its content, position, or timing.
+ */
+export function TextPresetsTab({
+	element,
+	trackId,
+}: {
+	element: TextElement;
+	trackId: string;
+}) {
 	const editor = useEditor();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedCategory, setSelectedCategory] =
 		useState<TextTemplateCategory | "all">("all");
 
-	const handleAddDefaultText = useCallback(
-		({ currentTime }: { currentTime: number }) => {
-			const activeScene = editor.scenes.getActiveScene();
-			if (!activeScene) return;
-
-			const element = buildTextElement({
-				raw: DEFAULT_TEXT_ELEMENT,
-				startTime: currentTime,
-			});
-
-			editor.timeline.insertElement({
-				element,
-				placement: { mode: "auto" },
-			});
-		},
-		[editor],
-	);
-
-	const handleApplyTemplate = useCallback(
+	const handleApplyPreset = useCallback(
 		({ template }: { template: TextTemplate }) => {
-			const activeScene = editor.scenes.getActiveScene();
-			if (!activeScene) return;
+			const style = template.style;
 
 			/* Ensure the template's font is loaded before rendering */
-			if (template.style.fontFamily) {
-				loadFullFont({ family: template.style.fontFamily });
+			if (style.fontFamily) {
+				loadFullFont({ family: style.fontFamily });
 			}
 
-			const currentTime = editor.playback.getCurrentTime();
-			const element = applyTextTemplate({ template, startTime: currentTime });
+			/* Apply style overrides while preserving content and timing */
+			const updates: Partial<TextElement> = {};
 
-			editor.timeline.insertElement({
-				element,
-				placement: { mode: "auto" },
+			if (style.fontSize !== undefined) updates.fontSize = style.fontSize;
+			if (style.fontFamily !== undefined) updates.fontFamily = style.fontFamily;
+			if (style.color !== undefined) updates.color = style.color;
+			if (style.textAlign !== undefined) updates.textAlign = style.textAlign;
+			if (style.fontWeight !== undefined) updates.fontWeight = style.fontWeight;
+			if (style.fontStyle !== undefined) updates.fontStyle = style.fontStyle;
+			if (style.textDecoration !== undefined)
+				updates.textDecoration = style.textDecoration;
+			if (style.letterSpacing !== undefined)
+				updates.letterSpacing = style.letterSpacing;
+			if (style.lineHeight !== undefined) updates.lineHeight = style.lineHeight;
+			if (style.opacity !== undefined) updates.opacity = style.opacity;
+
+			/* Set default template scale */
+			updates.transform = {
+				...element.transform,
+				scale: DEFAULT_TEXT_TEMPLATE_SCALE,
+			};
+
+			if (style.background) {
+				updates.background = {
+					...element.background,
+					...(style.background as TextElement["background"]),
+				};
+			}
+
+			/* Apply animations if template has them, with unique keyframe IDs */
+			if (template.animations) {
+				const channels: Record<string, unknown> = {};
+				for (const [path, channel] of Object.entries(
+					template.animations.channels,
+				)) {
+					if (!channel) continue;
+					const ch = channel as { valueKind: string; keyframes: Array<{ id: string; time: number; value: unknown; interpolation: string }> };
+					channels[path] = {
+						...ch,
+						keyframes: ch.keyframes.map((kf) => ({
+							...kf,
+							id: generateUUID(),
+						})),
+					};
+				}
+				(updates as Record<string, unknown>).animations = { channels };
+			}
+
+			editor.timeline.updateElements({
+				updates: [{ trackId, elementId: element.id, updates }],
 			});
 		},
-		[editor],
+		[editor, trackId, element],
 	);
 
 	const filteredTemplates = useMemo(() => {
@@ -77,7 +111,6 @@ export function TextView() {
 		return templates;
 	}, [searchQuery, selectedCategory]);
 
-	/* Group templates by category for display */
 	const groupedTemplates = useMemo(() => {
 		if (selectedCategory !== "all") {
 			return [{ category: selectedCategory, templates: filteredTemplates }];
@@ -101,47 +134,24 @@ export function TextView() {
 	}, [filteredTemplates, selectedCategory]);
 
 	return (
-		<PanelView title="Text">
-			{/* Default text element */}
-			<div className="mb-3">
-				<DraggableItem
-					name="Default text"
-					preview={
-						<div className="bg-accent flex size-full items-center justify-center rounded">
-							<span className="text-xs select-none">Default text</span>
-						</div>
-					}
-					dragData={{
-						id: "temp-text-id",
-						type: DEFAULT_TEXT_ELEMENT.type,
-						name: DEFAULT_TEXT_ELEMENT.name,
-						content: DEFAULT_TEXT_ELEMENT.content,
-					}}
-					aspectRatio={1}
-					onAddToTimeline={handleAddDefaultText}
-					shouldShowLabel={false}
-				/>
-			</div>
-
-			{/* Search bar */}
-			<div className="mb-2 px-1">
-				<Input
-					placeholder="Search templates..."
-					value={searchQuery}
-					onChange={(e) => setSearchQuery(e.target.value)}
-					className="h-8 text-xs"
-				/>
-			</div>
+		<div className="flex flex-col gap-2 p-3">
+			{/* Search */}
+			<Input
+				placeholder="Search presets..."
+				value={searchQuery}
+				onChange={(e) => setSearchQuery(e.target.value)}
+				className="h-8 text-xs"
+			/>
 
 			{/* Category tabs */}
-			<div className="scrollbar-thin mb-2 flex gap-1 overflow-x-auto px-1">
-				<CategoryTab
+			<div className="scrollbar-thin flex gap-1 overflow-x-auto">
+				<CategoryChip
 					label="All"
 					isActive={selectedCategory === "all"}
 					onClick={() => setSelectedCategory("all")}
 				/>
 				{TEXT_TEMPLATE_CATEGORY_ORDER.map((category) => (
-					<CategoryTab
+					<CategoryChip
 						key={category}
 						label={TEXT_TEMPLATE_CATEGORY_LABELS[category]}
 						isActive={selectedCategory === category}
@@ -150,8 +160,8 @@ export function TextView() {
 				))}
 			</div>
 
-			{/* Template grid grouped by category */}
-			<div className="space-y-3 px-1 pb-4">
+			{/* Template grid */}
+			<div className="space-y-3">
 				{groupedTemplates.map(({ category, templates }) => (
 					<div key={category}>
 						{selectedCategory === "all" && (
@@ -161,10 +171,10 @@ export function TextView() {
 						)}
 						<div className="grid grid-cols-2 gap-1.5">
 							{templates.map((template) => (
-								<TemplateCard
+								<PresetCard
 									key={template.id}
 									template={template}
-									onApply={handleApplyTemplate}
+									onApply={handleApplyPreset}
 								/>
 							))}
 						</div>
@@ -173,15 +183,15 @@ export function TextView() {
 
 				{filteredTemplates.length === 0 && (
 					<div className="text-muted-foreground flex items-center justify-center py-8 text-xs">
-						No templates found
+						No presets found
 					</div>
 				)}
 			</div>
-		</PanelView>
+		</div>
 	);
 }
 
-function CategoryTab({
+function CategoryChip({
 	label,
 	isActive,
 	onClick,
@@ -206,7 +216,7 @@ function CategoryTab({
 	);
 }
 
-function TemplateCard({
+function PresetCard({
 	template,
 	onApply,
 }: {
@@ -215,7 +225,6 @@ function TemplateCard({
 }) {
 	const style = template.style;
 
-	/* Inline preview that approximates the template's look */
 	const previewStyle: React.CSSProperties = {
 		fontFamily: style.fontFamily ?? "Arial",
 		fontSize: "clamp(8px, 2.5vw, 14px)",
@@ -226,12 +235,6 @@ function TemplateCard({
 			? `${Math.min(style.letterSpacing, 4)}px`
 			: undefined,
 		textAlign: (style.textAlign ?? "center") as React.CSSProperties["textAlign"],
-		textDecoration:
-			style.textDecoration === "underline"
-				? "underline"
-				: style.textDecoration === "line-through"
-					? "line-through"
-					: "none",
 	};
 
 	const hasBg = style.background?.enabled;
@@ -249,26 +252,19 @@ function TemplateCard({
 		<button
 			type="button"
 			onClick={() => onApply({ template })}
-			className="bg-zinc-900 hover:bg-zinc-800 hover:ring-primary/50 group flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-md transition-all hover:ring-1"
-			title={template.name}
+			className="bg-zinc-900 hover:bg-zinc-800 hover:ring-primary/50 flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-md transition-all hover:ring-1"
+			title={`Apply "${template.name}" preset`}
 		>
-			<div className="flex flex-col items-center gap-0.5 p-1">
-				<span
-					className="max-w-full select-none truncate leading-tight"
-					style={previewStyle}
-				>
-					{hasBg ? (
-						<span style={bgStyle}>
-							{style.content ?? template.name}
-						</span>
-					) : (
-						(style.content ?? template.name)
-					)}
-				</span>
-				<span className="text-muted-foreground text-[9px] opacity-0 transition-opacity group-hover:opacity-100">
-					{template.name}
-				</span>
-			</div>
+			<span
+				className="max-w-full select-none truncate px-1 leading-tight"
+				style={previewStyle}
+			>
+				{hasBg ? (
+					<span style={bgStyle}>{style.content ?? template.name}</span>
+				) : (
+					(style.content ?? template.name)
+				)}
+			</span>
 		</button>
 	);
 }

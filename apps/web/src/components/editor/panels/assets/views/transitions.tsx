@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanelView } from "@/components/editor/panels/assets/views/base-view";
 import { Input } from "@/components/ui/input";
 import { getAllTransitions } from "@/lib/transitions";
 import type { TransitionDefinition, TransitionType } from "@/types/transitions";
+import type { VideoTrack } from "@/types/timeline";
 import { cn } from "@/utils/ui";
+import { useEditor } from "@/hooks/use-editor";
+import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
+import { toast } from "sonner";
 
 const TRANSITION_TYPE_LABELS: Record<string, string> = {
 	fade: "Opacity",
@@ -63,13 +67,105 @@ export function TransitionsView() {
 function TransitionsGrid({
 	transitions,
 }: { transitions: TransitionDefinition[] }) {
+	const editor = useEditor();
+	const { selectedElements } = useElementSelection();
+
+	const handleApplyTransition = useCallback(
+		(transitionType: TransitionType, defaultDuration: number) => {
+			if (selectedElements.length === 0) {
+				toast.info("Select a clip on the timeline first");
+				return;
+			}
+
+			// Use the first selected element to find its track and adjacent elements
+			const firstSelected = selectedElements[0];
+			const track = editor.timeline.getTrackById({
+				trackId: firstSelected.trackId,
+			});
+			if (!track || track.type !== "video") {
+				toast.info("Transitions can only be added to video tracks");
+				return;
+			}
+
+			const videoTrack = track as VideoTrack;
+			const sorted = [...videoTrack.elements].sort(
+				(a, b) => a.startTime - b.startTime,
+			);
+			const elementIndex = sorted.findIndex(
+				(e) => e.id === firstSelected.elementId,
+			);
+			if (elementIndex < 0) return;
+
+			let applied = false;
+
+			// Try to add transition to the right boundary (between this and next)
+			if (elementIndex < sorted.length - 1) {
+				const elementA = sorted[elementIndex];
+				const elementB = sorted[elementIndex + 1];
+				const aEnd = elementA.startTime + elementA.duration;
+				if (Math.abs(elementB.startTime - aEnd) < 0.1) {
+					const existing = videoTrack.transitions?.some(
+						(t) =>
+							t.elementAId === elementA.id &&
+							t.elementBId === elementB.id,
+					);
+					if (!existing) {
+						editor.timeline.addTransition({
+							trackId: track.id,
+							elementAId: elementA.id,
+							elementBId: elementB.id,
+							type: transitionType,
+							duration: defaultDuration,
+						});
+						applied = true;
+					}
+				}
+			}
+
+			// If no right boundary, try left boundary
+			if (!applied && elementIndex > 0) {
+				const elementA = sorted[elementIndex - 1];
+				const elementB = sorted[elementIndex];
+				const aEnd = elementA.startTime + elementA.duration;
+				if (Math.abs(elementB.startTime - aEnd) < 0.1) {
+					const existing = videoTrack.transitions?.some(
+						(t) =>
+							t.elementAId === elementA.id &&
+							t.elementBId === elementB.id,
+					);
+					if (!existing) {
+						editor.timeline.addTransition({
+							trackId: track.id,
+							elementAId: elementA.id,
+							elementBId: elementB.id,
+							type: transitionType,
+							duration: defaultDuration,
+						});
+						applied = true;
+					}
+				}
+			}
+
+			if (!applied) {
+				toast.info(
+					"No adjacent clip boundary found. Place clips next to each other first.",
+				);
+			}
+		},
+		[editor, selectedElements],
+	);
+
 	return (
 		<div
 			className="grid gap-2"
 			style={{ gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))" }}
 		>
 			{transitions.map((t) => (
-				<TransitionCard key={t.type} transition={t} />
+				<TransitionCard
+					key={t.type}
+					transition={t}
+					onApply={handleApplyTransition}
+				/>
 			))}
 		</div>
 	);
@@ -260,10 +356,18 @@ function drawTransitionFrame({
 
 function TransitionCard({
 	transition,
-}: { transition: TransitionDefinition }) {
+	onApply,
+}: {
+	transition: TransitionDefinition;
+	onApply: (type: TransitionType, defaultDuration: number) => void;
+}) {
 	const [isHovered, setIsHovered] = useState(false);
 	const categoryLabel =
 		TRANSITION_TYPE_LABELS[transition.type] ?? "Other";
+
+	const handleClick = useCallback(() => {
+		onApply(transition.type, transition.defaultDuration);
+	}, [onApply, transition.type, transition.defaultDuration]);
 
 	return (
 		<div
@@ -271,7 +375,11 @@ function TransitionCard({
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
 		>
-			<div className="relative flex h-auto w-full cursor-default flex-col gap-1 p-1">
+			{/* biome-ignore lint/a11y/useKeyWithClickEvents: card click */}
+			<div
+				className="relative flex h-auto w-full cursor-pointer flex-col gap-1 p-1"
+				onClick={handleClick}
+			>
 				<div
 					className={cn(
 						"bg-accent relative overflow-hidden rounded-sm",

@@ -5,12 +5,14 @@ import type {
 	TimelineTrack,
 	TimelineElement,
 	ClipboardItem,
+	VideoTrack,
 } from "@/types/timeline";
 import type {
 	AnimationInterpolation,
 	AnimationPropertyPath,
 	AnimationValue,
 } from "@/types/animation";
+import type { TransitionInstance, TransitionType } from "@/types/transitions";
 import { calculateTotalDuration } from "@/lib/timeline";
 import {
 	AddTrackCommand,
@@ -40,6 +42,9 @@ import {
 	ReorderClipEffectsCommand,
 	UpsertEffectParamKeyframeCommand,
 	RemoveEffectParamKeyframeCommand,
+	AddTransitionCommand,
+	RemoveTransitionCommand,
+	UpdateTransitionCommand,
 } from "@/lib/commands/timeline";
 import { BatchCommand, PreviewTracker } from "@/lib/commands";
 import type { InsertElementParams } from "@/lib/commands/timeline/element/insert-element";
@@ -604,6 +609,79 @@ export class TimelineManager {
 
 	private notify(): void {
 		this.listeners.forEach((fn) => fn());
+	}
+
+	addTransition({
+		trackId,
+		elementAId,
+		elementBId,
+		type,
+		duration,
+	}: {
+		trackId: string;
+		elementAId: string;
+		elementBId: string;
+		type: TransitionType;
+		duration?: number;
+	}): string {
+		const command = new AddTransitionCommand(
+			trackId,
+			elementAId,
+			elementBId,
+			type,
+			duration,
+		);
+		this.editor.command.execute({ command });
+		return command.getTransitionId();
+	}
+
+	removeTransition({
+		trackId,
+		transitionId,
+	}: {
+		trackId: string;
+		transitionId: string;
+	}): void {
+		const command = new RemoveTransitionCommand(trackId, transitionId);
+		this.editor.command.execute({ command });
+	}
+
+	updateTransition({
+		trackId,
+		transitionId,
+		updates,
+	}: {
+		trackId: string;
+		transitionId: string;
+		updates: Partial<Pick<TransitionInstance, "type" | "duration">>;
+	}): void {
+		const command = new UpdateTransitionCommand(trackId, transitionId, updates);
+		this.editor.command.execute({ command });
+	}
+
+	/** Find adjacent element pairs on a video track that can have transitions. */
+	getAdjacentElementPairs({
+		trackId,
+	}: {
+		trackId: string;
+	}): Array<{ elementAId: string; elementBId: string }> {
+		const track = this.getTrackById({ trackId });
+		if (!track || track.type !== "video") return [];
+
+		const sorted = [...track.elements].sort(
+			(a, b) => a.startTime - b.startTime,
+		);
+		const pairs: Array<{ elementAId: string; elementBId: string }> = [];
+		for (let i = 0; i < sorted.length - 1; i++) {
+			const a = sorted[i];
+			const b = sorted[i + 1];
+			const aEnd = a.startTime + a.duration;
+			// Adjacent if B starts at or near A's end (within 0.1s tolerance)
+			if (Math.abs(b.startTime - aEnd) < 0.1) {
+				pairs.push({ elementAId: a.id, elementBId: b.id });
+			}
+		}
+		return pairs;
 	}
 
 	updateTracks(newTracks: TimelineTrack[]): void {
