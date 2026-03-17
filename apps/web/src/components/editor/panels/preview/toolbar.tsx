@@ -7,12 +7,21 @@ import { EditableTimecode } from "@/components/editable-timecode";
 import { Button } from "@/components/ui/button";
 import {
 	FullScreenIcon,
+	Loading03Icon,
 	PauseIcon,
 	PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { OcSocialIcon } from "@opencut/ui/icons";
 import { Separator } from "@/components/ui/separator";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { FPS_PRESETS } from "@/constants/project-constants";
 
 export function PreviewToolbar({
 	isFullscreen,
@@ -23,6 +32,7 @@ export function PreviewToolbar({
 }) {
 	const editor = useEditor();
 	const isPlaying = editor.playback.getIsPlaying();
+	const isBuffering = editor.playback.getIsBuffering();
 	const currentTime = editor.playback.getCurrentTime();
 	const totalDuration = editor.timeline.getTotalDuration();
 	const fps = editor.project.getActive().settings.fps;
@@ -52,11 +62,35 @@ export function PreviewToolbar({
 				variant="text"
 				size="icon"
 				onClick={() => invokeAction("toggle-play")}
+				disabled={isBuffering}
 			>
-				<HugeiconsIcon icon={isPlaying ? PauseIcon : PlayIcon} />
+				<HugeiconsIcon
+					icon={isBuffering ? Loading03Icon : isPlaying ? PauseIcon : PlayIcon}
+					className={isBuffering ? "animate-spin" : undefined}
+				/>
 			</Button>
 
 			<div className="justify-self-end flex items-center gap-2.5">
+				<Select
+					value={fps.toString()}
+					onValueChange={(value) =>
+						editor.project.updateSettings({
+							settings: { fps: parseFloat(value) },
+						})
+					}
+				>
+					<SelectTrigger className="h-7 w-[72px] text-xs px-2">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{FPS_PRESETS.map((preset) => (
+							<SelectItem key={preset.value} value={preset.value}>
+								{preset.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<Separator orientation="vertical" className="h-4" />
 				<Button
 					variant="secondary"
 					size="sm"

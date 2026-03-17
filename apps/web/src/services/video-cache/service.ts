@@ -5,6 +5,13 @@ import {
 	CanvasSink,
 	type WrappedCanvas,
 } from "mediabunny";
+import { FrameRingBuffer } from "./frame-ring-buffer";
+
+/** How many frames to pre-decode ahead during playback */
+const RING_BUFFER_SIZE = 15;
+
+/** Max time gap (seconds) before a forward seek is cheaper than iterating */
+const FORWARD_ITERATE_THRESHOLD = 2.0;
 
 interface VideoSinkData {
 	sink: CanvasSink;
@@ -14,11 +21,14 @@ interface VideoSinkData {
 	lastTime: number;
 	prefetching: boolean;
 	prefetchPromise: Promise<void> | null;
+	/** Ring buffer for decode-ahead during playback */
+	ringBuffer: FrameRingBuffer;
 }
 
 export class VideoCache {
 	private sinks = new Map<string, VideoSinkData>();
 	private initPromises = new Map<string, Promise<void>>();
+	private isPlaybackActive = false;
 
 	async getFrameAt({
 		mediaId,
@@ -34,6 +44,118 @@ export class VideoCache {
 		const sinkData = this.sinks.get(mediaId);
 		if (!sinkData) return null;
 
+		// During playback, try the ring buffer first (instant, no await)
+		if (this.isPlaybackActive) {
+			const buffered = sinkData.ringBuffer.getFrame(time);
+			if (buffered) {
+				// Keep currentFrame updated for fallback path
+				sinkData.currentFrame = buffered;
+				sinkData.lastTime = buffered.timestamp;
+
+				// If buffer is running low, trigger a refill
+				this.maybeRefillBuffer({ sinkData, currentTime: time });
+
+				return buffered;
+			}
+		}
+
+		// Fallback: original sync decode path (used for scrubbing, seeking, cache miss)
+		return this.getFrameSync({ sinkData, time });
+	}
+
+	/**
+	 * Signal that playback has started — begin pre-decoding frames ahead.
+	 * Waits for initial buffer fill so first frames are ready before RAF starts.
+	 * Called from PlaybackManager.play()
+	 */
+	async notifyPlaybackStart(currentTime: number): Promise<void> {
+		this.isPlaybackActive = true;
+
+		// Start filling ring buffers for all active sinks
+		const fillPromises: Promise<void>[] = [];
+		for (const sinkData of this.sinks.values()) {
+			this.startBufferFill({ sinkData, fromTime: currentTime });
+			fillPromises.push(sinkData.ringBuffer.waitForFill());
+		}
+
+		// Wait for initial buffer fill (decode a few frames before playback starts)
+		if (fillPromises.length > 0) {
+			await Promise.all(fillPromises);
+		}
+	}
+
+	/**
+	 * Signal that playback has paused/stopped — stop pre-decoding.
+	 * Called from PlaybackManager.pause()
+	 */
+	notifyPlaybackStop(): void {
+		this.isPlaybackActive = false;
+
+		// Clear ring buffers to free memory
+		for (const sinkData of this.sinks.values()) {
+			sinkData.ringBuffer.clear();
+		}
+	}
+
+	/**
+	 * Signal a seek during playback — invalidate and refill buffers.
+	 * Called from PlaybackManager.seek()
+	 */
+	notifySeek(time: number): void {
+		if (!this.isPlaybackActive) return;
+
+		for (const sinkData of this.sinks.values()) {
+			sinkData.ringBuffer.clear();
+			this.startBufferFill({ sinkData, fromTime: time });
+		}
+	}
+
+	// --- Ring buffer management ---
+
+	private startBufferFill({
+		sinkData,
+		fromTime,
+	}: {
+		sinkData: VideoSinkData;
+		fromTime: number;
+	}): void {
+		if (sinkData.ringBuffer.isFilling()) return;
+
+		// Create a fresh iterator from the target time
+		const iterator = sinkData.sink.canvases(fromTime);
+		sinkData.ringBuffer.startFilling(iterator);
+	}
+
+	private maybeRefillBuffer({
+		sinkData,
+		currentTime,
+	}: {
+		sinkData: VideoSinkData;
+		currentTime: number;
+	}): void {
+		// Refill when buffer has less than 2 frames remaining
+		if (sinkData.ringBuffer.isFilling()) return;
+		if (sinkData.ringBuffer.getCount() >= 2) {
+			// Check if playhead is close to the end of buffered range
+			const latestTime = sinkData.ringBuffer.getLatestTime();
+			if (latestTime - currentTime > 0.1) return; // Still have >100ms buffered
+		}
+
+		// Start a new fill cycle from just past the latest buffered time
+		const latestTime = sinkData.ringBuffer.getLatestTime();
+		const fillFrom = latestTime > 0 ? latestTime : currentTime;
+		this.startBufferFill({ sinkData, fromTime: fillFrom });
+	}
+
+	// --- Original sync decode path (scrubbing, seeking, fallback) ---
+
+	private async getFrameSync({
+		sinkData,
+		time,
+	}: {
+		sinkData: VideoSinkData;
+		time: number;
+	}): Promise<WrappedCanvas | null> {
 		if (sinkData.nextFrame && sinkData.nextFrame.timestamp <= time) {
 			sinkData.currentFrame = sinkData.nextFrame;
 			sinkData.nextFrame = null;
@@ -54,7 +176,7 @@ export class VideoCache {
 			sinkData.iterator &&
 			sinkData.currentFrame &&
 			time >= sinkData.lastTime &&
-			time < sinkData.lastTime + 2.0
+			time < sinkData.lastTime + FORWARD_ITERATE_THRESHOLD
 		) {
 			const frame = await this.iterateToTime({ sinkData, targetTime: time });
 			if (frame) {
@@ -81,6 +203,7 @@ export class VideoCache {
 	}): boolean {
 		return time >= frame.timestamp && time < frame.timestamp + frame.duration;
 	}
+
 	private async iterateToTime({
 		sinkData,
 		targetTime,
@@ -92,23 +215,19 @@ export class VideoCache {
 
 		try {
 			while (true) {
-				// Wait for any pending prefetch to finish before touching iterator
 				if (sinkData.prefetching && sinkData.prefetchPromise) {
 					await sinkData.prefetchPromise;
 				}
 
-				// Check if the nextFrame (which might have just arrived) is what we need
 				if (
 					sinkData.nextFrame &&
-					sinkData.nextFrame.timestamp <= targetTime + 0.05 // Tolerance
+					sinkData.nextFrame.timestamp <= targetTime + 0.05
 				) {
 					sinkData.currentFrame = sinkData.nextFrame;
 					sinkData.nextFrame = null;
 				} else {
 					const { value: frame, done } = await sinkData.iterator.next();
-
 					if (done || !frame) break;
-
 					sinkData.currentFrame = frame;
 				}
 
@@ -130,6 +249,7 @@ export class VideoCache {
 
 		return null;
 	}
+
 	private async seekToTime({
 		sinkData,
 		time,
@@ -151,14 +271,11 @@ export class VideoCache {
 			sinkData.iterator = sinkData.sink.canvases(time);
 			sinkData.lastTime = time;
 
-			// Fetch current frame
 			const { value: frame } = await sinkData.iterator.next();
 
 			if (frame) {
 				sinkData.currentFrame = frame;
 
-				// Aggressively fetch next frame immediately to fill buffer
-				// This matches the mediaplayer example which fetches 2 frames on start
 				try {
 					const { value: next } = await sinkData.iterator.next();
 					if (next) {
@@ -216,6 +333,7 @@ export class VideoCache {
 			sinkData.iterator = null;
 		}
 	}
+
 	private async ensureSink({
 		mediaId,
 		file,
@@ -239,6 +357,7 @@ export class VideoCache {
 			this.initPromises.delete(mediaId);
 		}
 	}
+
 	private async initializeSink({
 		mediaId,
 		file,
@@ -275,6 +394,7 @@ export class VideoCache {
 				lastTime: -1,
 				prefetching: false,
 				prefetchPromise: null,
+				ringBuffer: new FrameRingBuffer(RING_BUFFER_SIZE),
 			});
 		} catch (error) {
 			console.error(`Failed to initialize video sink for ${mediaId}:`, error);
@@ -285,10 +405,10 @@ export class VideoCache {
 	clearVideo({ mediaId }: { mediaId: string }): void {
 		const sinkData = this.sinks.get(mediaId);
 		if (sinkData) {
+			sinkData.ringBuffer.clear();
 			if (sinkData.iterator) {
 				void sinkData.iterator.return();
 			}
-
 			this.sinks.delete(mediaId);
 		}
 
@@ -309,6 +429,10 @@ export class VideoCache {
 			cachedFrames: Array.from(this.sinks.values()).filter(
 				(s) => s.currentFrame,
 			).length,
+			bufferedFrames: Array.from(this.sinks.values()).reduce(
+				(sum, s) => sum + s.ringBuffer.getCount(),
+				0,
+			),
 		};
 	}
 }
