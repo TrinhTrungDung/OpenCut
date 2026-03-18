@@ -1,9 +1,7 @@
 import type { EditorCore } from "@/core";
-import { videoCache } from "@/services/video-cache/service";
 
 export class PlaybackManager {
 	private isPlaying = false;
-	private isBuffering = false;
 	private currentTime = 0;
 	private volume = 1;
 	private muted = false;
@@ -15,7 +13,7 @@ export class PlaybackManager {
 
 	constructor(private editor: EditorCore) {}
 
-	async play(): Promise<void> {
+	play(): void {
 		const duration = this.editor.timeline.getTotalDuration();
 
 		if (duration > 0) {
@@ -25,21 +23,6 @@ export class PlaybackManager {
 		}
 
 		this.isPlaying = true;
-		this.isBuffering = true;
-		this.notify();
-
-		// Pre-fill ring buffers before starting the timer —
-		// decode a few frames ahead so first frames are instant
-		await videoCache.notifyPlaybackStart(this.currentTime);
-
-		this.isBuffering = false;
-
-		// Guard: user may have paused during the buffer fill
-		if (!this.isPlaying) {
-			this.notify();
-			return;
-		}
-
 		this.startTimer();
 		this.notify();
 	}
@@ -48,16 +31,13 @@ export class PlaybackManager {
 		this.isPlaying = false;
 		this.stopTimer();
 		this.notify();
-
-		// Stop pre-decoding and free buffer memory
-		videoCache.notifyPlaybackStop();
 	}
 
-	async toggle(): Promise<void> {
+	toggle(): void {
 		if (this.isPlaying) {
 			this.pause();
 		} else {
-			await this.play();
+			this.play();
 		}
 	}
 
@@ -65,9 +45,6 @@ export class PlaybackManager {
 		const duration = this.editor.timeline.getTotalDuration();
 		this.currentTime = Math.max(0, Math.min(duration, time));
 		this.notify();
-
-		// Invalidate and refill ring buffers at new position
-		videoCache.notifySeek(this.currentTime);
 
 		window.dispatchEvent(
 			new CustomEvent("playback-seek", {
@@ -135,7 +112,7 @@ export class PlaybackManager {
 	}
 
 	getIsBuffering(): boolean {
-		return this.isBuffering;
+		return false;
 	}
 
 	subscribe(listener: () => void): () => void {
