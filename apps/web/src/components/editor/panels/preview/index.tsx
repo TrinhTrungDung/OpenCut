@@ -207,13 +207,22 @@ function PreviewCanvas({
 	const renderTree = editor.renderer.getRenderTree();
 	const isPlaying = editor.playback.getIsPlaying();
 
-	// Force re-render when playback state changes (rendering path switches between
-	// <video> element during playback and mediabunny when paused/scrubbing)
+	// Force re-render when playback state changes
 	useEffect(() => {
 		if (!isPlaying) {
 			lastFrameRef.current = -1;
 		}
 	}, [isPlaying]);
+
+	// Re-render when video element finishes seeking (shows exact pause frame)
+	useEffect(() => {
+		const handleSeeked = () => {
+			lastFrameRef.current = -1;
+		};
+		// Listen for seek events from video elements — dispatched by the pool
+		window.addEventListener("video-seeked", handleSeeked);
+		return () => window.removeEventListener("video-seeked", handleSeeked);
+	}, []);
 
 	const render = useCallback(() => {
 		if (canvasRef.current && renderTree) {
@@ -229,11 +238,10 @@ function PreviewCanvas({
 				frame !== lastFrameRef.current ||
 				renderTree !== lastSceneRef.current
 			) {
+				lastFrameRef.current = frame;
 				lastSceneRef.current = renderTree;
 				const renderStart = performance.now();
 
-				// Fire-and-forget: render is effectively synchronous for preview
-				// (drawImage on <video> element takes ~0.3ms). No blocking guard needed.
 				renderer
 					.renderToCanvas({
 						node: renderTree,
@@ -241,8 +249,6 @@ function PreviewCanvas({
 						targetCanvas: canvasRef.current,
 					})
 					.then(() => {
-						lastFrameRef.current = frame;
-
 						const renderMs = performance.now() - renderStart;
 						statsRef.current.lastRenderMs = renderMs;
 

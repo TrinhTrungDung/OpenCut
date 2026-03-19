@@ -14,8 +14,8 @@ export class PlaybackManager {
 	private playStartWall = 0;
 	/** Timeline time when playback started */
 	private playStartTime = 0;
-	/** Throttle: last time we notified listeners during playback */
-	private lastNotifyTime = 0;
+	/** Lightweight time-only listeners (RAF-driven DOM updates, no React re-renders) */
+	private timeListeners = new Set<(time: number) => void>();
 
 	constructor(private editor: EditorCore) {}
 
@@ -134,8 +134,18 @@ export class PlaybackManager {
 		return () => this.listeners.delete(listener);
 	}
 
+	/** Subscribe to time-only updates during playback (no React re-renders) */
+	subscribeToTime(listener: (time: number) => void): () => void {
+		this.timeListeners.add(listener);
+		return () => this.timeListeners.delete(listener);
+	}
+
 	private notify(): void {
 		this.listeners.forEach((fn) => fn());
+	}
+
+	private notifyTime(time: number): void {
+		this.timeListeners.forEach((fn) => fn(time));
 	}
 
 	private startTimer(): void {
@@ -171,14 +181,10 @@ export class PlaybackManager {
 			);
 		} else {
 			this.currentTime = newTime;
-			// Throttle notifications to ~15Hz during playback.
-			// Preview canvas has its own RAF loop and reads getCurrentTime() directly.
-			// Full 60Hz notify() causes re-render storm across all editor components.
-			const now = performance.now();
-			if (now - this.lastNotifyTime >= 66) {
-				this.lastNotifyTime = now;
-				this.notify();
-			}
+			// Only notify lightweight time listeners during playback ticks.
+			// Full notify() triggers React re-renders across 60+ editor components.
+			// Preview canvas + timeline playhead read getCurrentTime() in their own RAF loops.
+			this.notifyTime(newTime);
 		}
 
 		this.playbackTimer = requestAnimationFrame(this.updateTime);

@@ -73,6 +73,7 @@ function buildVisualNodeForElement({
 			speedCurve: element.type === "video" ? element.speedCurve : undefined,
 			elementId: element.id,
 			sourceDuration: element.sourceDuration,
+			isPreview,
 		});
 	}
 
