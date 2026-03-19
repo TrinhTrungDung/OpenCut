@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
 	getCenteredLineLeft,
 	TIMELINE_INDICATOR_LINE_WIDTH_PX,
@@ -52,6 +52,45 @@ export function TimelinePlayhead({
 		zoomLevel,
 	});
 	const leftPosition = getCenteredLineLeft({ centerPixel: centerPosition });
+
+	// RAF-based DOM update during playback — bypasses React re-renders
+	const isPlaying = editor.playback.getIsPlaying();
+	useEffect(() => {
+		if (!isPlaying) return;
+
+		let raf: number;
+		const update = () => {
+			const el = playheadRef.current;
+			if (!el) return;
+			const time = editor.playback.getCurrentTime();
+			const center = timelineTimeToSnappedPixels({ time, zoomLevel });
+			const left = getCenteredLineLeft({ centerPixel: center });
+			el.style.left = `${left}px`;
+
+			// Auto-scroll timeline to follow playhead
+			const rulerViewport = rulerScrollRef.current;
+			const tracksViewport = tracksScrollRef.current;
+			if (rulerViewport && tracksViewport) {
+				const playheadPixels = center;
+				const viewportWidth = rulerViewport.clientWidth;
+				const needsScroll =
+					playheadPixels < rulerViewport.scrollLeft ||
+					playheadPixels > rulerViewport.scrollLeft + viewportWidth;
+				if (needsScroll) {
+					const scrollMax = rulerViewport.scrollWidth - viewportWidth;
+					const desiredScroll = Math.max(
+						0,
+						Math.min(scrollMax, playheadPixels - viewportWidth / 2),
+					);
+					rulerViewport.scrollLeft = tracksViewport.scrollLeft = desiredScroll;
+				}
+			}
+
+			raf = requestAnimationFrame(update);
+		};
+		raf = requestAnimationFrame(update);
+		return () => cancelAnimationFrame(raf);
+	}, [isPlaying, zoomLevel, editor.playback, playheadRef, rulerScrollRef, tracksScrollRef]);
 
 	const handlePlayheadKeyDown = (
 		event: React.KeyboardEvent<HTMLDivElement>,

@@ -9,7 +9,13 @@ export class PlaybackManager {
 	private isScrubbing = false;
 	private listeners = new Set<() => void>();
 	private playbackTimer: number | null = null;
-	private lastUpdate = 0;
+
+	/** Monotonic clock: wall time when playback started */
+	private playStartWall = 0;
+	/** Timeline time when playback started */
+	private playStartTime = 0;
+	/** Throttle: last time we notified listeners during playback */
+	private lastNotifyTime = 0;
 
 	constructor(private editor: EditorCore) {}
 
@@ -23,6 +29,8 @@ export class PlaybackManager {
 		}
 
 		this.isPlaying = true;
+		this.playStartWall = performance.now();
+		this.playStartTime = this.currentTime;
 		this.startTimer();
 		this.notify();
 	}
@@ -44,6 +52,12 @@ export class PlaybackManager {
 	seek({ time }: { time: number }): void {
 		const duration = this.editor.timeline.getTotalDuration();
 		this.currentTime = Math.max(0, Math.min(duration, time));
+
+		if (this.isPlaying) {
+			this.playStartWall = performance.now();
+			this.playStartTime = this.currentTime;
+		}
+
 		this.notify();
 
 		window.dispatchEvent(
@@ -128,8 +142,6 @@ export class PlaybackManager {
 		if (this.playbackTimer) {
 			cancelAnimationFrame(this.playbackTimer);
 		}
-
-		this.lastUpdate = performance.now();
 		this.updateTime();
 	}
 
@@ -143,17 +155,14 @@ export class PlaybackManager {
 	private updateTime = (): void => {
 		if (!this.isPlaying) return;
 
-		const now = performance.now();
-		const delta = (now - this.lastUpdate) / 1000;
-		this.lastUpdate = now;
-
-		const newTime = this.currentTime + delta;
+		// Monotonic clock: always correct time regardless of dropped frames
+		const elapsed = (performance.now() - this.playStartWall) / 1000;
+		const newTime = this.playStartTime + elapsed;
 		const duration = this.editor.timeline.getTotalDuration();
 
 		if (duration > 0 && newTime >= duration) {
-			this.pause();
 			this.currentTime = duration;
-			this.notify();
+			this.pause();
 
 			window.dispatchEvent(
 				new CustomEvent("playback-seek", {
@@ -162,7 +171,14 @@ export class PlaybackManager {
 			);
 		} else {
 			this.currentTime = newTime;
-			this.notify();
+			// Throttle notifications to ~15Hz during playback.
+			// Preview canvas has its own RAF loop and reads getCurrentTime() directly.
+			// Full 60Hz notify() causes re-render storm across all editor components.
+			const now = performance.now();
+			if (now - this.lastNotifyTime >= 66) {
+				this.lastNotifyTime = now;
+				this.notify();
+			}
 		}
 
 		this.playbackTimer = requestAnimationFrame(this.updateTime);
