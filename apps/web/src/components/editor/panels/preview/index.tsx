@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useDeepCompareEffect from "use-deep-compare-effect";
 import { useEditor } from "@/hooks/use-editor";
 import { useRafLoop } from "@/hooks/use-raf-loop";
@@ -18,6 +18,7 @@ import { usePreviewStore } from "@/stores/preview-store";
 import { useMediaPreviewStore } from "@/stores/media-preview-store";
 import { PreviewContextMenu } from "./context-menu";
 import { PreviewToolbar } from "./toolbar";
+import { useVideoElementSync } from "@/hooks/use-video-element-sync";
 
 function usePreviewSize() {
 	const editor = useEditor();
@@ -61,6 +62,7 @@ export function PreviewPanel() {
 					containerRef={containerRef}
 				/>
 				<RenderTreeController />
+				<VideoElementSyncController />
 				{previewAsset && <MediaSourcePreview />}
 			</div>
 			<PreviewToolbar
@@ -69,6 +71,11 @@ export function PreviewPanel() {
 			/>
 		</div>
 	);
+}
+
+function VideoElementSyncController() {
+	useVideoElementSync();
+	return null;
 }
 
 function RenderTreeController() {
@@ -98,6 +105,45 @@ function RenderTreeController() {
 	return null;
 }
 
+/** Live debug overlay showing FPS and frame timing */
+function DebugOverlay({ statsRef }: { statsRef: React.RefObject<{ fps: number; lastRenderMs: number; droppedFrames: number } | null> }) {
+	const [stats, setStats] = useState({ fps: 0, lastRenderMs: 0, droppedFrames: 0 });
+	const editor = useEditor();
+	const isPlaying = editor.playback.getIsPlaying();
+
+	useEffect(() => {
+		if (!isPlaying) return;
+		const interval = setInterval(() => {
+			if (statsRef.current) {
+				setStats({ ...statsRef.current });
+			}
+		}, 200);
+		return () => clearInterval(interval);
+	}, [isPlaying, statsRef]);
+
+	if (!isPlaying) return null;
+
+	return (
+		<div
+			style={{
+				position: "absolute",
+				top: 4,
+				left: 4,
+				background: "rgba(0,0,0,0.7)",
+				color: stats.fps >= 25 ? "#0f0" : stats.fps >= 15 ? "#ff0" : "#f00",
+				padding: "2px 6px",
+				fontSize: 11,
+				fontFamily: "monospace",
+				borderRadius: 3,
+				zIndex: 50,
+				pointerEvents: "none",
+			}}
+		>
+			{stats.fps} FPS | {stats.lastRenderMs.toFixed(1)}ms | dropped: {stats.droppedFrames}
+		</div>
+	);
+}
+
 function PreviewCanvas({
 	onToggleFullscreen,
 	containerRef,
@@ -110,12 +156,16 @@ function PreviewCanvas({
 	const canvasBoundsRef = useRef<HTMLDivElement>(null);
 	const lastFrameRef = useRef(-1);
 	const lastSceneRef = useRef<RootNode | null>(null);
-	const renderingRef = useRef(false);
 	const { width: nativeWidth, height: nativeHeight } = usePreviewSize();
 	const containerSize = useContainerSize({ containerRef: outerContainerRef });
 	const editor = useEditor();
 	const activeProject = editor.project.getActive();
 	const { overlays } = usePreviewStore();
+
+	// Debug stats
+	const statsRef = useRef({ fps: 0, lastRenderMs: 0, droppedFrames: 0 });
+	const frameCountRef = useRef(0);
+	const fpsTimerRef = useRef(performance.now());
 
 	const renderer = useMemo(() => {
 		return new CanvasRenderer({
@@ -155,9 +205,27 @@ function PreviewCanvas({
 	}, [nativeWidth, nativeHeight, containerSize.width, containerSize.height]);
 
 	const renderTree = editor.renderer.getRenderTree();
+	const isPlaying = editor.playback.getIsPlaying();
+
+	// Force re-render when playback state changes
+	useEffect(() => {
+		if (!isPlaying) {
+			lastFrameRef.current = -1;
+		}
+	}, [isPlaying]);
+
+	// Re-render when video element finishes seeking (shows exact pause frame)
+	useEffect(() => {
+		const handleSeeked = () => {
+			lastFrameRef.current = -1;
+		};
+		// Listen for seek events from video elements — dispatched by the pool
+		window.addEventListener("video-seeked", handleSeeked);
+		return () => window.removeEventListener("video-seeked", handleSeeked);
+	}, []);
 
 	const render = useCallback(() => {
-		if (canvasRef.current && renderTree && !renderingRef.current) {
+		if (canvasRef.current && renderTree) {
 			const time = editor.playback.getCurrentTime();
 			const lastFrameTime = getLastFrameTime({
 				duration: renderTree.duration,
@@ -170,9 +238,10 @@ function PreviewCanvas({
 				frame !== lastFrameRef.current ||
 				renderTree !== lastSceneRef.current
 			) {
-				renderingRef.current = true;
-				lastSceneRef.current = renderTree;
 				lastFrameRef.current = frame;
+				lastSceneRef.current = renderTree;
+				const renderStart = performance.now();
+
 				renderer
 					.renderToCanvas({
 						node: renderTree,
@@ -180,7 +249,21 @@ function PreviewCanvas({
 						targetCanvas: canvasRef.current,
 					})
 					.then(() => {
-						renderingRef.current = false;
+						const renderMs = performance.now() - renderStart;
+						statsRef.current.lastRenderMs = renderMs;
+
+						frameCountRef.current++;
+						const now = performance.now();
+						const elapsed = now - fpsTimerRef.current;
+						if (elapsed >= 1000) {
+							statsRef.current.fps = Math.round((frameCountRef.current * 1000) / elapsed);
+							frameCountRef.current = 0;
+							fpsTimerRef.current = now;
+						}
+
+						if (renderMs > 16) {
+							statsRef.current.droppedFrames++;
+						}
 					});
 			}
 		}
@@ -214,6 +297,7 @@ function PreviewCanvas({
 										: activeProject?.settings.background.color,
 							}}
 						/>
+						<DebugOverlay statsRef={statsRef} />
 						<PreviewInteractionOverlay
 							canvasRef={canvasRef}
 							containerRef={canvasBoundsRef}

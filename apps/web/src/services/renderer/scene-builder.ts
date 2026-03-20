@@ -14,6 +14,7 @@ import type { VisualNode } from "./nodes/visual-node";
 import type { TBackground, TCanvasSize } from "@/types/project";
 import { DEFAULT_BLUR_INTENSITY } from "@/constants/project-constants";
 import { isMainTrack } from "@/lib/timeline";
+import { getProxyFile } from "@/services/proxy/proxy-cache";
 
 const PREVIEW_MAX_IMAGE_SIZE = 2048;
 const BLUR_BACKGROUND_ZOOM_SCALE = 1.4;
@@ -49,10 +50,16 @@ function buildVisualNodeForElement({
 	if (!mediaAsset?.file || !mediaAsset?.url) return null;
 
 	if (mediaAsset.type === "video") {
+		// Use proxy file for preview (540p, fast decode) — original for export
+		const proxyFile = isPreview
+			? getProxyFile({ mediaAssetId: mediaAsset.id })
+			: null;
+		const useProxy = !!proxyFile;
+
 		return new VideoNode({
-			mediaId: mediaAsset.id,
+			mediaId: useProxy ? `${mediaAsset.id}:proxy` : mediaAsset.id,
 			url: mediaAsset.url,
-			file: mediaAsset.file,
+			file: useProxy ? proxyFile : mediaAsset.file,
 			duration: element.duration,
 			timeOffset: element.startTime,
 			trimStart: element.trimStart,
@@ -66,6 +73,7 @@ function buildVisualNodeForElement({
 			speedCurve: element.type === "video" ? element.speedCurve : undefined,
 			elementId: element.id,
 			sourceDuration: element.sourceDuration,
+			isPreview,
 		});
 	}
 

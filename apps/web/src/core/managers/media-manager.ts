@@ -5,6 +5,7 @@ import { generateUUID } from "@/utils/id";
 import { videoCache } from "@/services/video-cache/service";
 import { hasMediaId } from "@/lib/timeline/element-utils";
 import { preExtractAudio, evictVideoAudio } from "@/lib/media/video-audio-cache";
+import { preGenerateProxy, evictProxy } from "@/services/proxy/proxy-cache";
 
 export class MediaManager {
 	private assets: MediaAsset[] = [];
@@ -32,6 +33,7 @@ export class MediaManager {
 		   when playback starts — video and audio are separate streams */
 		if (newAsset.type === "video") {
 			preExtractAudio({ mediaAssetId: newAsset.id, videoFile: newAsset.file });
+			preGenerateProxy({ mediaAssetId: newAsset.id, videoFile: newAsset.file });
 		}
 
 		try {
@@ -53,7 +55,9 @@ export class MediaManager {
 		const asset = this.assets.find((asset) => asset.id === id);
 
 		videoCache.clearVideo({ mediaId: id });
+		videoCache.clearVideo({ mediaId: `${id}:proxy` });
 		evictVideoAudio({ mediaAssetId: id });
+		evictProxy({ mediaAssetId: id });
 
 		if (asset?.url) {
 			URL.revokeObjectURL(asset.url);
@@ -98,10 +102,11 @@ export class MediaManager {
 			this.assets = mediaAssets;
 			this.notify();
 
-			/* Pre-extract audio from all video assets in background */
+			/* Pre-extract audio and generate proxies from all video assets in background */
 			for (const asset of mediaAssets) {
 				if (asset.type === "video") {
 					preExtractAudio({ mediaAssetId: asset.id, videoFile: asset.file });
+					preGenerateProxy({ mediaAssetId: asset.id, videoFile: asset.file });
 				}
 			}
 		} catch (error) {

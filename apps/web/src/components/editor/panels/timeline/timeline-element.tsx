@@ -65,6 +65,7 @@ import type { SelectedKeyframeRef, ElementKeyframe } from "@/types/animation";
 import { cn } from "@/utils/ui";
 import { Button } from "@/components/ui/button";
 import { usePropertiesStore } from "@/stores/properties-store";
+import { useProxyProgress } from "@/hooks/use-proxy-progress";
 
 const KEYFRAME_INDICATOR_MIN_WIDTH_PX = 40;
 const ELEMENT_RING_WIDTH_PX = 1.5;
@@ -413,6 +414,9 @@ function ElementInner({
 	const closeClipEffects = usePropertiesStore(
 		(state) => state.closeClipEffects,
 	);
+	const proxyMediaId =
+		element.type === "video" && hasMediaId(element) ? element.mediaId : null;
+	const proxyProgress = useProxyProgress({ mediaAssetId: proxyMediaId });
 
 	return (
 		<div
@@ -464,6 +468,14 @@ function ElementInner({
 			)}
 
 			<SpeedBadge speed={element.speed} />
+
+			{proxyProgress !== null && proxyProgress < 100 && (
+				<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+					<span className="text-[10px] font-medium text-white/80 bg-black/40 rounded px-1.5 py-0.5 tabular-nums">
+						{Math.round(proxyProgress)}%
+					</span>
+				</div>
+			)}
 
 			{isSelected && (
 				<>

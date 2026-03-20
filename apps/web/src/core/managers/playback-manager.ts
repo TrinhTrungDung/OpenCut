@@ -9,7 +9,13 @@ export class PlaybackManager {
 	private isScrubbing = false;
 	private listeners = new Set<() => void>();
 	private playbackTimer: number | null = null;
-	private lastUpdate = 0;
+
+	/** Monotonic clock: wall time when playback started */
+	private playStartWall = 0;
+	/** Timeline time when playback started */
+	private playStartTime = 0;
+	/** Lightweight time-only listeners (RAF-driven DOM updates, no React re-renders) */
+	private timeListeners = new Set<(time: number) => void>();
 
 	constructor(private editor: EditorCore) {}
 
@@ -23,6 +29,8 @@ export class PlaybackManager {
 		}
 
 		this.isPlaying = true;
+		this.playStartWall = performance.now();
+		this.playStartTime = this.currentTime;
 		this.startTimer();
 		this.notify();
 	}
@@ -44,6 +52,12 @@ export class PlaybackManager {
 	seek({ time }: { time: number }): void {
 		const duration = this.editor.timeline.getTotalDuration();
 		this.currentTime = Math.max(0, Math.min(duration, time));
+
+		if (this.isPlaying) {
+			this.playStartWall = performance.now();
+			this.playStartTime = this.currentTime;
+		}
+
 		this.notify();
 
 		window.dispatchEvent(
@@ -111,21 +125,33 @@ export class PlaybackManager {
 		return this.isScrubbing;
 	}
 
+	getIsBuffering(): boolean {
+		return false;
+	}
+
 	subscribe(listener: () => void): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
+	}
+
+	/** Subscribe to time-only updates during playback (no React re-renders) */
+	subscribeToTime(listener: (time: number) => void): () => void {
+		this.timeListeners.add(listener);
+		return () => this.timeListeners.delete(listener);
 	}
 
 	private notify(): void {
 		this.listeners.forEach((fn) => fn());
 	}
 
+	private notifyTime(time: number): void {
+		this.timeListeners.forEach((fn) => fn(time));
+	}
+
 	private startTimer(): void {
 		if (this.playbackTimer) {
 			cancelAnimationFrame(this.playbackTimer);
 		}
-
-		this.lastUpdate = performance.now();
 		this.updateTime();
 	}
 
@@ -139,17 +165,14 @@ export class PlaybackManager {
 	private updateTime = (): void => {
 		if (!this.isPlaying) return;
 
-		const now = performance.now();
-		const delta = (now - this.lastUpdate) / 1000;
-		this.lastUpdate = now;
-
-		const newTime = this.currentTime + delta;
+		// Monotonic clock: always correct time regardless of dropped frames
+		const elapsed = (performance.now() - this.playStartWall) / 1000;
+		const newTime = this.playStartTime + elapsed;
 		const duration = this.editor.timeline.getTotalDuration();
 
 		if (duration > 0 && newTime >= duration) {
-			this.pause();
 			this.currentTime = duration;
-			this.notify();
+			this.pause();
 
 			window.dispatchEvent(
 				new CustomEvent("playback-seek", {
@@ -158,7 +181,10 @@ export class PlaybackManager {
 			);
 		} else {
 			this.currentTime = newTime;
-			this.notify();
+			// Only notify lightweight time listeners during playback ticks.
+			// Full notify() triggers React re-renders across 60+ editor components.
+			// Preview canvas + timeline playhead read getCurrentTime() in their own RAF loops.
+			this.notifyTime(newTime);
 		}
 
 		this.playbackTimer = requestAnimationFrame(this.updateTime);

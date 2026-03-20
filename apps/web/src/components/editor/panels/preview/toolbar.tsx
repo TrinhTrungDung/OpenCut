@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useEffect, useRef, useState } from "react";
 import { useEditor } from "@/hooks/use-editor";
 import { formatTimeCode } from "@/lib/time";
 import { invokeAction } from "@/lib/actions";
@@ -7,12 +8,64 @@ import { EditableTimecode } from "@/components/editable-timecode";
 import { Button } from "@/components/ui/button";
 import {
 	FullScreenIcon,
+	Loading03Icon,
 	PauseIcon,
 	PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { OcSocialIcon } from "@opencut/ui/icons";
 import { Separator } from "@/components/ui/separator";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { FPS_PRESETS } from "@/constants/project-constants";
+
+/** Isolated timecode display — re-renders via subscribeToTime, not useEditor() */
+const LiveTimecode = memo(function LiveTimecode({
+	fps,
+	totalDuration,
+}: {
+	fps: number;
+	totalDuration: number;
+}) {
+	const editor = useEditor();
+	const [time, setTime] = useState(editor.playback.getCurrentTime());
+	const lastUpdateRef = useRef(0);
+
+	useEffect(() => {
+		// Subscribe to lightweight time updates (no full React re-render storm)
+		return editor.playback.subscribeToTime((t) => {
+			// Throttle display updates to ~15Hz — timecode doesn't need 60fps
+			const now = performance.now();
+			if (now - lastUpdateRef.current >= 66) {
+				lastUpdateRef.current = now;
+				setTime(t);
+			}
+		});
+	}, [editor.playback]);
+
+	// Also sync on seek/play/pause via regular subscription
+	useEffect(() => {
+		return editor.playback.subscribe(() => {
+			setTime(editor.playback.getCurrentTime());
+		});
+	}, [editor.playback]);
+
+	return (
+		<EditableTimecode
+			time={time}
+			duration={totalDuration}
+			format="HH:MM:SS:FF"
+			fps={fps}
+			onTimeChange={({ time }) => editor.playback.seek({ time })}
+			className="text-center"
+		/>
+	);
+});
 
 export function PreviewToolbar({
 	isFullscreen,
@@ -23,21 +76,14 @@ export function PreviewToolbar({
 }) {
 	const editor = useEditor();
 	const isPlaying = editor.playback.getIsPlaying();
-	const currentTime = editor.playback.getCurrentTime();
+	const isBuffering = editor.playback.getIsBuffering();
 	const totalDuration = editor.timeline.getTotalDuration();
 	const fps = editor.project.getActive().settings.fps;
 
 	return (
 		<div className="grid grid-cols-[1fr_auto_1fr] items-center pb-3 pt-5 px-5">
 			<div className="flex items-center">
-				<EditableTimecode
-					time={currentTime}
-					duration={totalDuration}
-					format="HH:MM:SS:FF"
-					fps={fps}
-					onTimeChange={({ time }) => editor.playback.seek({ time })}
-					className="text-center"
-				/>
+				<LiveTimecode fps={fps} totalDuration={totalDuration} />
 				<span className="text-muted-foreground px-2 font-mono text-xs">/</span>
 				<span className="text-muted-foreground font-mono text-xs">
 					{formatTimeCode({
@@ -52,11 +98,35 @@ export function PreviewToolbar({
 				variant="text"
 				size="icon"
 				onClick={() => invokeAction("toggle-play")}
+				disabled={isBuffering}
 			>
-				<HugeiconsIcon icon={isPlaying ? PauseIcon : PlayIcon} />
+				<HugeiconsIcon
+					icon={isBuffering ? Loading03Icon : isPlaying ? PauseIcon : PlayIcon}
+					className={isBuffering ? "animate-spin" : undefined}
+				/>
 			</Button>
 
 			<div className="justify-self-end flex items-center gap-2.5">
+				<Select
+					value={fps.toString()}
+					onValueChange={(value) =>
+						editor.project.updateSettings({
+							settings: { fps: parseFloat(value) },
+						})
+					}
+				>
+					<SelectTrigger className="h-7 w-[72px] text-xs px-2">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{FPS_PRESETS.map((preset) => (
+							<SelectItem key={preset.value} value={preset.value}>
+								{preset.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<Separator orientation="vertical" className="h-4" />
 				<Button
 					variant="secondary"
 					size="sm"
