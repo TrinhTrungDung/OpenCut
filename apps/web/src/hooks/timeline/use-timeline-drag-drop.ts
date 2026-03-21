@@ -16,11 +16,12 @@ import { AddTrackCommand, InsertElementCommand } from "@/lib/commands/timeline";
 import { BatchCommand } from "@/lib/commands";
 import { computeDropTarget } from "@/lib/timeline/drop-utils";
 import { getDragData, hasDragData } from "@/lib/drag-data";
-import type { TrackType, DropTarget, ElementType } from "@/types/timeline";
+import type { TrackType, DropTarget, ElementType, VideoTrack } from "@/types/timeline";
 import type {
 	MediaDragData,
 	StickerDragData,
 	EffectDragData,
+	TransitionDragData,
 } from "@/types/drag";
 
 interface UseTimelineDragDropProps {
@@ -59,6 +60,7 @@ export function useTimelineDragDrop({
 			const dragData = getDragData({ dataTransfer });
 			if (!dragData) return null;
 
+			if (dragData.type === "transition") return null;
 			if (dragData.type === "text") return "text";
 			if (dragData.type === "sticker") return "sticker";
 			if (dragData.type === "effect") return "effect";
@@ -128,7 +130,15 @@ export function useTimelineDragDrop({
 				return;
 			}
 
-			if (!elementType) return;
+			if (!elementType) {
+				// Still allow drag over for transitions
+				const dragData = getDragData({ dataTransfer: e.dataTransfer });
+				if (dragData?.type === "transition") {
+					e.dataTransfer.dropEffect = "copy";
+					return;
+				}
+				return;
+			}
 
 			setElementType(elementType);
 
@@ -384,6 +394,88 @@ export function useTimelineDragDrop({
 		[editor.command, editor.timeline, tracks],
 	);
 
+	const executeTransitionDrop = useCallback(
+		({
+			e,
+			transitionData,
+		}: {
+			e: React.DragEvent;
+			transitionData: TransitionDragData;
+		}) => {
+			const scrollContainer = tracksScrollRef?.current;
+			const referenceRect =
+				scrollContainer?.getBoundingClientRect() ??
+				containerRef.current?.getBoundingClientRect();
+			if (!referenceRect) return;
+
+			const scrollLeft = scrollContainer?.scrollLeft ?? 0;
+			const mouseX = e.clientX - referenceRect.left + scrollLeft;
+			const dropTime = mouseX / (TIMELINE_CONSTANTS.PIXELS_PER_SECOND * zoomLevel);
+
+			// Find nearest clip boundary across all video tracks
+			let bestMatch: {
+				trackId: string;
+				elementAId: string;
+				elementBId: string;
+				distance: number;
+			} | null = null;
+
+			for (const track of tracks) {
+				if (track.type !== "video") continue;
+				const videoTrack = track as VideoTrack;
+				const sorted = [...videoTrack.elements].sort(
+					(a, b) => a.startTime - b.startTime,
+				);
+
+				for (let i = 0; i < sorted.length - 1; i++) {
+					const elementA = sorted[i];
+					const elementB = sorted[i + 1];
+					const boundaryTime = elementA.startTime + elementA.duration;
+					const gap = Math.abs(elementB.startTime - boundaryTime);
+
+					// Only consider adjacent clips (gap < 0.1s)
+					if (gap >= 0.1) continue;
+
+					const distance = Math.abs(dropTime - boundaryTime);
+					if (distance < 2.0 && (!bestMatch || distance < bestMatch.distance)) {
+						bestMatch = {
+							trackId: track.id,
+							elementAId: elementA.id,
+							elementBId: elementB.id,
+							distance,
+						};
+					}
+				}
+			}
+
+			if (bestMatch) {
+				// Remove existing transition at this boundary first
+				const track = tracks.find((t) => t.id === bestMatch!.trackId) as VideoTrack | undefined;
+				const existingTransition = track?.transitions?.find(
+					(t) =>
+						t.elementAId === bestMatch!.elementAId &&
+						t.elementBId === bestMatch!.elementBId,
+				);
+				if (existingTransition) {
+					editor.timeline.removeTransition({
+						trackId: bestMatch.trackId,
+						transitionId: existingTransition.id,
+					});
+				}
+				editor.timeline.addTransition({
+					trackId: bestMatch.trackId,
+					elementAId: bestMatch.elementAId,
+					elementBId: bestMatch.elementBId,
+					type: transitionData.transitionType,
+					duration: transitionData.defaultDuration,
+				});
+			} else {
+				toast.info("Drop on a clip boundary to add a transition");
+			}
+		},
+		[containerRef, tracksScrollRef, tracks, zoomLevel, editor.timeline],
+	);
+
 	const executeFileDrop = useCallback(
 		async ({
 			files,
@@ -476,9 +568,18 @@ export function useTimelineDragDrop({
 
 			try {
 				if (hasAsset) {
-					if (!currentTarget) return;
 					const dragData = getDragData({ dataTransfer: e.dataTransfer });
 					if (!dragData) return;
+
+					if (dragData.type === "transition") {
+						executeTransitionDrop({
+							e,
+							transitionData: dragData as TransitionDragData,
+						});
+						return;
+					}
+
+					if (!currentTarget) return;
 
 					if (dragData.type === "text") {
 						executeTextDrop({ target: currentTarget, dragData });
@@ -522,6 +623,7 @@ export function useTimelineDragDrop({
 			executeStickerDrop,
 			executeMediaDrop,
 			executeEffectDrop,
+			executeTransitionDrop,
 			executeFileDrop,
 			containerRef,
 			headerRef,

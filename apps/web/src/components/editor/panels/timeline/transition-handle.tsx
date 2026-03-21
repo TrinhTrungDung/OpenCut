@@ -5,27 +5,26 @@ import { cn } from "@/utils/ui";
 
 interface TransitionHandleProps {
 	side: "left" | "right";
+	onDragStart?: () => void;
 	onDrag: ({ deltaPx }: { deltaPx: number }) => void;
 }
 
-export function TransitionHandle({ side, onDrag }: TransitionHandleProps) {
-	const startXRef = useRef(0);
+export function TransitionHandle({ side, onDragStart, onDrag }: TransitionHandleProps) {
+	const dragStartXRef = useRef(0);
 
 	const handlePointerDown = useCallback(
 		(e: React.PointerEvent) => {
 			e.stopPropagation();
 			e.preventDefault();
-			startXRef.current = e.clientX;
+			dragStartXRef.current = e.clientX;
+			onDragStart?.();
 			const target = e.currentTarget;
 			target.setPointerCapture(e.pointerId);
 
 			const handleMove = (moveEvent: Event) => {
 				const pe = moveEvent as PointerEvent;
-				const deltaPx = pe.clientX - startXRef.current;
-				if (deltaPx !== 0) {
-					onDrag({ deltaPx });
-					startXRef.current = pe.clientX;
-				}
+				const totalDeltaPx = pe.clientX - dragStartXRef.current;
+				onDrag({ deltaPx: totalDeltaPx });
 			};
 
 			const handleUp = () => {
@@ -36,7 +35,7 @@ export function TransitionHandle({ side, onDrag }: TransitionHandleProps) {
 			target.addEventListener("pointermove", handleMove);
 			target.addEventListener("pointerup", handleUp);
 		},
-		[onDrag],
+		[onDrag, onDragStart],
 	);
 
 	return (

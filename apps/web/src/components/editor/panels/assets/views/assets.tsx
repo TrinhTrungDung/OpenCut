@@ -70,6 +70,9 @@ export function MediaView() {
 		mediaSortBy,
 		mediaSortOrder,
 		setMediaSort,
+		selectedMediaIds,
+		toggleMediaSelection,
+		clearMediaSelection,
 	} = useAssetsPanelStore();
 	const { highlightedId, registerElement } = useRevealItem(
 		highlightMediaId,
@@ -228,6 +231,9 @@ export function MediaView() {
 							onPreview={handlePreview}
 							highlightedId={highlightedId}
 							registerElement={registerElement}
+						selectedMediaIds={selectedMediaIds}
+						onToggleSelect={toggleMediaSelection}
+						onClearSelection={clearMediaSelection}
 						/>
 					</>
 				)}
@@ -318,15 +324,62 @@ function MediaItemWithContextMenu({
 	item,
 	children,
 	onRemove,
+	selectedMediaIds,
+	allItems,
+	onClearSelection,
 }: {
 	item: MediaAsset;
 	children: React.ReactNode;
 	onRemove: ({ event, id }: { event: React.MouseEvent; id: string }) => void;
+	selectedMediaIds: Set<string>;
+	allItems: MediaAsset[];
+	onClearSelection: () => void;
 }) {
+	const editor = useEditor();
+	const hasMultipleSelected = selectedMediaIds.size > 1;
+	const isSelected = selectedMediaIds.has(item.id);
+
+	const handleAddSameTrack = useCallback(() => {
+		// If this item is part of a multi-select, use all selected items
+		// Otherwise just add this single item
+		const idsToAdd = hasMultipleSelected && isSelected
+			? allItems.filter((i) => selectedMediaIds.has(i.id)).map((i) => i.id)
+			: [item.id];
+
+		const assetsToAdd = idsToAdd
+			.map((id) => allItems.find((i) => i.id === id))
+			.filter((a): a is MediaAsset => a != null);
+
+		const elements = assetsToAdd.map((asset) =>
+			buildElementFromMedia({
+				mediaId: asset.id,
+				mediaType: asset.type,
+				name: asset.name,
+				duration: asset.duration ?? TIMELINE_CONSTANTS.DEFAULT_ELEMENT_DURATION,
+				startTime: 0, // will be overridden by command
+			}),
+		);
+
+		editor.timeline.insertElementsSameTrack({
+			elements,
+			startTime: editor.playback.getCurrentTime(),
+		});
+
+		onClearSelection();
+	}, [editor, item, allItems, selectedMediaIds, hasMultipleSelected, isSelected, onClearSelection]);
+
+	const selectionCount = selectedMediaIds.size;
+	const addLabel = hasMultipleSelected && isSelected
+		? `Add ${selectionCount} clips to timeline (same track)`
+		: "Add to timeline (same track)";
+
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger>{children}</ContextMenuTrigger>
 			<ContextMenuContent>
+				<ContextMenuItem onClick={handleAddSameTrack}>
+					{addLabel}
+				</ContextMenuItem>
 				<ContextMenuItem>Export clips</ContextMenuItem>
 				<ContextMenuItem
 					variant="destructive"
@@ -346,6 +399,9 @@ function MediaItemList({
 	onPreview,
 	highlightedId,
 	registerElement,
+	selectedMediaIds,
+	onToggleSelect,
+	onClearSelection,
 }: {
 	items: MediaAsset[];
 	mode: MediaViewMode;
@@ -353,35 +409,80 @@ function MediaItemList({
 	onPreview: ({ asset }: { asset: MediaAsset }) => void;
 	highlightedId: string | null;
 	registerElement: (id: string, element: HTMLElement | null) => void;
+	selectedMediaIds: Set<string>;
+	onToggleSelect: (id: string) => void;
+	onClearSelection: () => void;
 }) {
 	const isGrid = mode === "grid";
 
+	const handleItemClick = useCallback(
+		(e: React.MouseEvent, item: MediaAsset) => {
+			if (e.ctrlKey || e.metaKey) {
+				e.stopPropagation();
+				onToggleSelect(item.id);
+			} else if (selectedMediaIds.size > 0 && !e.ctrlKey && !e.metaKey) {
+				// Clicking without Ctrl clears selection
+				onClearSelection();
+			}
+		},
+		[onToggleSelect, onClearSelection, selectedMediaIds.size],
+	);
+
 	return (
 		<div
+			role="listbox"
+			aria-multiselectable="true"
+			aria-label="Media assets"
 			className={cn(isGrid ? "grid gap-2" : "flex flex-col gap-1")}
 			style={
 				isGrid ? { gridTemplateColumns: "repeat(auto-fill, 160px)" } : undefined
 			}
 		>
-			{items.map((item) => (
-				<div key={item.id} ref={(element) => registerElement(item.id, element)}>
-					<MediaItemWithContextMenu item={item} onRemove={onRemove}>
-						<MediaAssetDraggable
-							item={item}
-							preview={
-								<MediaPreview
-									item={item}
-									variant={isGrid ? "grid" : "compact"}
-								/>
+			{items.map((item) => {
+				const isSelected = selectedMediaIds.has(item.id);
+				return (
+					<div
+						key={item.id}
+						ref={(element) => registerElement(item.id, element)}
+						role="option"
+						aria-selected={isSelected}
+						onClick={(e) => handleItemClick(e, item)}
+						onKeyDown={(e) => {
+							if (e.key === " " || e.key === "Enter") {
+								e.preventDefault();
+								onToggleSelect(item.id);
 							}
-							variant={isGrid ? "card" : "compact"}
-							isRounded={isGrid ? false : undefined}
-							isHighlighted={highlightedId === item.id}
-							onPreview={onPreview}
-						/>
-					</MediaItemWithContextMenu>
-				</div>
-			))}
+						}}
+						tabIndex={0}
+						className={cn(
+							"rounded transition-colors",
+							isSelected && "ring-primary ring-2",
+						)}
+					>
+						<MediaItemWithContextMenu
+							item={item}
+							onRemove={onRemove}
+							selectedMediaIds={selectedMediaIds}
+							allItems={items}
+							onClearSelection={onClearSelection}
+						>
+							<MediaAssetDraggable
+								item={item}
+								preview={
+									<MediaPreview
+										item={item}
+										variant={isGrid ? "grid" : "compact"}
+									/>
+								}
+								variant={isGrid ? "card" : "compact"}
+								isRounded={isGrid ? false : undefined}
+								isHighlighted={highlightedId === item.id}
+								onPreview={onPreview}
+							/>
+						</MediaItemWithContextMenu>
+					</div>
+				);
+			})}
 		</div>
 	);
 }

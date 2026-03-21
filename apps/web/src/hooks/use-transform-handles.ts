@@ -168,7 +168,7 @@ export function useTransformHandles({
 			const baseWidth = bounds.width / resolvedTransform.scale;
 			const baseHeight = bounds.height / resolvedTransform.scale;
 			const shouldClearScaleAnimation =
-				!!element.animations?.channels["transform.scale"];
+				!!element.animations?.channels?.["transform.scale"];
 			const animationsWithoutScale = shouldClearScaleAnimation
 				? setChannel({
 						animations: element.animations,

@@ -53,6 +53,17 @@ export class PlaybackManager {
 		const duration = this.editor.timeline.getTotalDuration();
 		this.currentTime = Math.max(0, Math.min(duration, time));
 
+		if (this.isScrubbing) {
+			// During scrubbing, only update the time value.
+			// - Skip wall clock reset (updateTime skips during scrubbing anyway)
+			// - Skip full notify() to avoid 60+ React re-renders per mousemove
+			// - Skip playback-seek event (audio already stopped on scrub start)
+			// The preview canvas reads getCurrentTime() in its own RAF loop,
+			// and the playhead uses local scrubTime state.
+			this.notifyTime(this.currentTime);
+			return;
+		}
+
 		if (this.isPlaying) {
 			this.playStartWall = performance.now();
 			this.playStartTime = this.currentTime;
@@ -117,7 +128,16 @@ export class PlaybackManager {
 	}
 
 	setScrubbing({ isScrubbing }: { isScrubbing: boolean }): void {
+		const wasScrubbing = this.isScrubbing;
 		this.isScrubbing = isScrubbing;
+
+		// When scrubbing ends during playback, reset the wall clock so playback
+		// resumes from the current scrubbed position, not from a stale time.
+		if (wasScrubbing && !isScrubbing && this.isPlaying) {
+			this.playStartWall = performance.now();
+			this.playStartTime = this.currentTime;
+		}
+
 		this.notify();
 	}
 
@@ -164,6 +184,12 @@ export class PlaybackManager {
 
 	private updateTime = (): void => {
 		if (!this.isPlaying) return;
+
+		// Don't advance time while scrubbing — the user controls position via seek()
+		if (this.isScrubbing) {
+			this.playbackTimer = requestAnimationFrame(this.updateTime);
+			return;
+		}
 
 		// Monotonic clock: always correct time regardless of dropped frames
 		const elapsed = (performance.now() - this.playStartWall) / 1000;

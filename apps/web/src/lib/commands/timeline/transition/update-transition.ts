@@ -9,7 +9,7 @@ export class UpdateTransitionCommand extends Command {
 	constructor(
 		private readonly trackId: string,
 		private readonly transitionId: string,
-		private readonly updates: Partial<Pick<TransitionInstance, "type" | "duration">>,
+		private readonly updates: Partial<Pick<TransitionInstance, "type" | "duration" | "easing">>,
 	) {
 		super();
 	}

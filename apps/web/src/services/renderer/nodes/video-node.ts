@@ -29,16 +29,29 @@ export class VideoNode extends VisualNode<VideoNodeParams> {
 				mediaId: this.params.mediaId,
 			});
 
-			// When paused, seek the video element to the correct source time
 			if (el.paused) {
+				// When paused (scrubbing while not playing), seek to correct time
 				videoElementPool.seekIfNeeded({
 					elementId: this.params.elementId,
 					time: videoTime,
 				});
+			} else if (Math.abs(el.currentTime - videoTime) > 0.15) {
+				// During playback scrubbing, the element keeps playing but the
+				// user moved the playhead. Seek the playing element directly —
+				// this is faster than pause + cold-restart because the decode
+				// pipeline stays warm.
+				el.currentTime = videoTime;
 			}
 
-			// Draw from video element if it has data (works both playing and paused)
-			if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+			// Draw from video element if it has decoded frame data.
+			// During seeking readyState can drop to HAVE_METADATA (1), but
+			// drawImage still produces the last decoded frame which is better
+			// than showing black. Accept HAVE_METADATA when seeking so the
+			// preview stays responsive during playhead scrubbing.
+			const minReady = el.seeking
+				? HTMLMediaElement.HAVE_METADATA
+				: HTMLMediaElement.HAVE_CURRENT_DATA;
+			if (el.readyState >= minReady && el.videoWidth > 0) {
 				this.renderVisual({
 					renderer,
 					source: el,

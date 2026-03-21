@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { TransitionInstance, TransitionType } from "@/types/transitions";
 import { TransitionHandle } from "./transition-handle";
 import { cn } from "@/utils/ui";
@@ -20,6 +20,10 @@ const TRANSITION_ICONS: Record<TransitionType, string> = {
 	"slide-left": "\u21E0",
 	"slide-right": "\u21E2",
 	blur: "\u25CE",
+	"dip-to-black": "\u25A0",
+	"dip-to-white": "\u25A1",
+	"circle-open": "\u25CB",
+	glitch: "\u2301",
 };
 
 interface TransitionOverlayProps {
@@ -75,6 +79,8 @@ export function TransitionOverlay({
 		[],
 	);
 
+	const durationAtDragStartRef = useRef(transition.duration);
+
 	const handleDurationDrag = useCallback(
 		({ deltaPx, side }: { deltaPx: number; side: "left" | "right" }) => {
 			const deltaSeconds = deltaPx / (pixelsPerSecond * zoomLevel);
@@ -83,13 +89,21 @@ export function TransitionOverlay({
 				MAX_TRANSITION_DURATION,
 				Math.max(
 					MIN_TRANSITION_DURATION,
-					transition.duration + deltaSeconds * directionMultiplier,
+					durationAtDragStartRef.current + deltaSeconds * directionMultiplier,
 				),
 			);
 			onDurationChange?.({ newDuration });
 		},
-		[pixelsPerSecond, zoomLevel, transition.duration, onDurationChange],
+		[pixelsPerSecond, zoomLevel, onDurationChange],
 	);
+
+	const handleDragStartLeft = useCallback(() => {
+		durationAtDragStartRef.current = transition.duration;
+	}, [transition.duration]);
+
+	const handleDragStartRight = useCallback(() => {
+		durationAtDragStartRef.current = transition.duration;
+	}, [transition.duration]);
 
 	const handleDragLeft = useCallback(
 		({ deltaPx }: { deltaPx: number }) => {
@@ -141,8 +155,8 @@ export function TransitionOverlay({
 				)}
 
 				{/* Duration handles */}
-				<TransitionHandle side="left" onDrag={handleDragLeft} />
-				<TransitionHandle side="right" onDrag={handleDragRight} />
+				<TransitionHandle side="left" onDragStart={handleDragStartLeft} onDrag={handleDragLeft} />
+				<TransitionHandle side="right" onDragStart={handleDragStartRight} onDrag={handleDragRight} />
 			</div>
 
 			{/* Context menu */}
@@ -171,6 +185,10 @@ const ALL_TRANSITION_TYPES: TransitionType[] = [
 	"slide-left",
 	"slide-right",
 	"blur",
+	"dip-to-black",
+	"dip-to-white",
+	"circle-open",
+	"glitch",
 ];
 
 function TransitionContextMenu({

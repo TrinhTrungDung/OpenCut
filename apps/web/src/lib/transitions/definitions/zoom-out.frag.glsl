@@ -1,7 +1,7 @@
+// Crosswarp-style zoom-out transition
 vec4 transition(vec2 uv) {
-  float scale = 1.0 + progress;
-  vec2 center = vec2(0.5);
-  vec2 fromUv = (uv - center) * scale + center;
-  vec4 fromColor = getFromColor(fromUv);
-  return mix(fromColor, getToColor(uv), progress);
+  float x = smoothstep(0.0, 1.0, progress * 2.0 + uv.x - 1.0);
+  vec2 fromUv = (uv - 0.5) * (1.0 + x * 0.5) + 0.5;
+  vec2 toUv = (uv - 0.5) * (1.5 - x * 0.5) + 0.5;
+  return mix(getFromColor(fromUv), getToColor(toUv), x);
 }

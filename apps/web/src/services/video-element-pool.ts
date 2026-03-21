@@ -11,6 +11,8 @@ interface PoolEntry {
 	file: File;
 	/** Last source-time we seeked to (avoid redundant seeks when paused) */
 	lastSeekTime: number;
+	/** Queued seek time while a previous seek is in-flight */
+	pendingSeekTime: number | null;
 }
 
 class VideoElementPool {
@@ -44,11 +46,21 @@ class VideoElementPool {
 		el.playsInline = true;
 		el.preload = "auto";
 		el.style.display = "none";
-		// Notify preview canvas when seek completes so it re-renders the exact frame
+		// When a seek completes, apply any queued seek or notify the preview.
 		el.addEventListener("seeked", () => {
+			const entry = this.pool.get(elementId);
+			if (entry?.pendingSeekTime != null) {
+				const next = entry.pendingSeekTime;
+				entry.pendingSeekTime = null;
+				entry.lastSeekTime = next;
+				el.currentTime = next;
+				return; // Wait for the chained seeked event
+			}
 			window.dispatchEvent(new Event("video-seeked"));
 		});
-		this.container!.appendChild(el);
+		if (this.container) {
+			this.container.appendChild(el);
+		}
 
 		this.pool.set(elementId, {
 			element: el,
@@ -56,6 +68,7 @@ class VideoElementPool {
 			mediaId,
 			file,
 			lastSeekTime: -1,
+			pendingSeekTime: null,
 		});
 		return el;
 	}
@@ -80,8 +93,15 @@ class VideoElementPool {
 
 		// Only seek if time changed meaningfully (>16ms ~ 1 frame at 60fps)
 		if (Math.abs(time - entry.lastSeekTime) > 0.016) {
-			entry.element.currentTime = time;
-			entry.lastSeekTime = time;
+			if (entry.element.seeking) {
+				// A seek is in-flight — queue this one so only 1 seek runs at a time.
+				// The seeked handler will apply it when the current seek finishes.
+				entry.pendingSeekTime = time;
+			} else {
+				entry.element.currentTime = time;
+				entry.lastSeekTime = time;
+				entry.pendingSeekTime = null;
+			}
 		}
 
 		return entry.element.seeking;

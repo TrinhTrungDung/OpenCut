@@ -10,6 +10,7 @@ import { cn } from "@/utils/ui";
 import { useEditor } from "@/hooks/use-editor";
 import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
 import { toast } from "sonner";
+import { setDragData } from "@/lib/drag-data";
 
 const TRANSITION_TYPE_LABELS: Record<string, string> = {
 	fade: "Opacity",
@@ -23,6 +24,10 @@ const TRANSITION_TYPE_LABELS: Record<string, string> = {
 	"slide-left": "Slide",
 	"slide-right": "Slide",
 	blur: "Blur",
+	"dip-to-black": "Dip",
+	"dip-to-white": "Dip",
+	"circle-open": "Geometric",
+	glitch: "Distortion",
 };
 
 export function TransitionsView() {
@@ -342,6 +347,84 @@ function drawTransitionFrame({
 			}
 			break;
 		}
+		case "dip-to-black": {
+			if (progress < 0.5) {
+				const p = progress * 2;
+				ctx.fillStyle = colorA;
+				ctx.globalAlpha = 1 - p;
+				ctx.fillRect(0, 0, width, height);
+				ctx.fillStyle = "#000";
+				ctx.globalAlpha = p;
+				ctx.fillRect(0, 0, width, height);
+			} else {
+				const p = (progress - 0.5) * 2;
+				ctx.fillStyle = "#000";
+				ctx.globalAlpha = 1 - p;
+				ctx.fillRect(0, 0, width, height);
+				ctx.fillStyle = colorB;
+				ctx.globalAlpha = p;
+				ctx.fillRect(0, 0, width, height);
+			}
+			ctx.globalAlpha = 1;
+			break;
+		}
+		case "dip-to-white": {
+			if (progress < 0.5) {
+				const p = progress * 2;
+				ctx.fillStyle = colorA;
+				ctx.globalAlpha = 1 - p;
+				ctx.fillRect(0, 0, width, height);
+				ctx.fillStyle = "#fff";
+				ctx.globalAlpha = p;
+				ctx.fillRect(0, 0, width, height);
+			} else {
+				const p = (progress - 0.5) * 2;
+				ctx.fillStyle = "#fff";
+				ctx.globalAlpha = 1 - p;
+				ctx.fillRect(0, 0, width, height);
+				ctx.fillStyle = colorB;
+				ctx.globalAlpha = p;
+				ctx.fillRect(0, 0, width, height);
+			}
+			ctx.globalAlpha = 1;
+			break;
+		}
+		case "circle-open": {
+			ctx.fillStyle = colorA;
+			ctx.fillRect(0, 0, width, height);
+			const cx = width / 2;
+			const cy = height / 2;
+			const maxR = Math.sqrt(cx * cx + cy * cy);
+			const r = maxR * progress;
+			ctx.save();
+			ctx.beginPath();
+			ctx.arc(cx, cy, r, 0, Math.PI * 2);
+			ctx.clip();
+			ctx.fillStyle = colorB;
+			ctx.fillRect(0, 0, width, height);
+			ctx.restore();
+			break;
+		}
+		case "glitch": {
+			ctx.fillStyle = colorA;
+			ctx.globalAlpha = 1 - progress;
+			ctx.fillRect(0, 0, width, height);
+			ctx.fillStyle = colorB;
+			ctx.globalAlpha = progress;
+			ctx.fillRect(0, 0, width, height);
+			ctx.globalAlpha = 1;
+			// Simulate glitch blocks
+			const blockCount = 4;
+			for (let i = 0; i < blockCount; i++) {
+				const bx = ((i * 37 + Math.floor(progress * 100)) % width);
+				const by = ((i * 53 + Math.floor(progress * 200)) % height);
+				const bw = width * 0.2;
+				const bh = height * 0.1;
+				ctx.fillStyle = i % 2 === 0 ? "rgba(255,0,0,0.3)" : "rgba(0,255,255,0.3)";
+				ctx.fillRect(bx, by, bw, bh);
+			}
+			break;
+		}
 		default: {
 			ctx.fillStyle = colorA;
 			ctx.globalAlpha = 1 - progress;
@@ -379,6 +462,19 @@ function TransitionCard({
 			<div
 				className="relative flex h-auto w-full cursor-pointer flex-col gap-1 p-1"
 				onClick={handleClick}
+				draggable
+				onDragStart={(e) => {
+					setDragData({
+						dataTransfer: e.dataTransfer,
+						dragData: {
+							type: "transition",
+							id: transition.type,
+							name: transition.name,
+							transitionType: transition.type,
+							defaultDuration: transition.defaultDuration,
+						},
+					});
+				}}
 			>
 				<div
 					className={cn(

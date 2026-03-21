@@ -13,6 +13,10 @@ import zoomOutGlsl from "./zoom-out.frag.glsl";
 import slideLeftGlsl from "./slide-left.frag.glsl";
 import slideRightGlsl from "./slide-right.frag.glsl";
 import blurTransitionGlsl from "./blur-transition.frag.glsl";
+import dipToBlackGlsl from "./dip-to-black.frag.glsl";
+import dipToWhiteGlsl from "./dip-to-white.frag.glsl";
+import circleOpenGlsl from "./circle-open.frag.glsl";
+import glitchGlsl from "./glitch.frag.glsl";
 
 interface RawTransition {
 	type: TransitionType;
@@ -33,7 +37,7 @@ const RAW_TRANSITIONS: RawTransition[] = [
 	{
 		type: "dissolve",
 		name: "Dissolve",
-		keywords: ["dissolve", "noise", "random"],
+		keywords: ["dissolve", "noise", "random", "organic"],
 		defaultDuration: 0.5,
 		glsl: dissolveGlsl,
 	},
@@ -68,14 +72,14 @@ const RAW_TRANSITIONS: RawTransition[] = [
 	{
 		type: "zoom-in",
 		name: "Zoom In",
-		keywords: ["zoom", "in", "scale"],
+		keywords: ["zoom", "in", "scale", "crosswarp"],
 		defaultDuration: 0.5,
 		glsl: zoomInGlsl,
 	},
 	{
 		type: "zoom-out",
 		name: "Zoom Out",
-		keywords: ["zoom", "out", "scale"],
+		keywords: ["zoom", "out", "scale", "crosswarp"],
 		defaultDuration: 0.5,
 		glsl: zoomOutGlsl,
 	},
@@ -99,6 +103,34 @@ const RAW_TRANSITIONS: RawTransition[] = [
 		keywords: ["blur", "soft", "focus"],
 		defaultDuration: 0.5,
 		glsl: blurTransitionGlsl,
+	},
+	{
+		type: "dip-to-black",
+		name: "Dip to Black",
+		keywords: ["dip", "black", "dark", "fade"],
+		defaultDuration: 0.8,
+		glsl: dipToBlackGlsl,
+	},
+	{
+		type: "dip-to-white",
+		name: "Dip to White",
+		keywords: ["dip", "white", "flash", "bright"],
+		defaultDuration: 0.8,
+		glsl: dipToWhiteGlsl,
+	},
+	{
+		type: "circle-open",
+		name: "Circle Open",
+		keywords: ["circle", "radial", "iris", "reveal"],
+		defaultDuration: 0.6,
+		glsl: circleOpenGlsl,
+	},
+	{
+		type: "glitch",
+		name: "Glitch",
+		keywords: ["glitch", "distortion", "chromatic", "aberration", "digital"],
+		defaultDuration: 0.4,
+		glsl: glitchGlsl,
 	},
 ];
 

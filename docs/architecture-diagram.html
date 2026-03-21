@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenCut Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    padding: 24px;
+  }
+  h1 { text-align: center; margin-bottom: 8px; color: #58a6ff; font-size: 28px; }
+  .subtitle { text-align: center; color: #8b949e; margin-bottom: 32px; font-size: 14px; }
+  .section {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 24px; margin-bottom: 24px;
+  }
+  .section h2 { color: #58a6ff; margin-bottom: 16px; font-size: 20px; border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+  .section h3 { color: #7ee787; margin: 16px 0 8px; font-size: 16px; }
+  .mermaid { display: flex; justify-content: center; overflow-x: auto; }
+  .mermaid svg { max-width: 100%; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #30363d; font-size: 13px; }
+  th { color: #58a6ff; font-weight: 600; }
+  td { color: #c9d1d9; }
+  td code { background: #1f2937; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #7ee787; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .tag-browser { background: #1f3a5f; color: #58a6ff; }
+  .tag-server { background: #1a3a2a; color: #7ee787; }
+  .tag-wasm { background: #3a2a1a; color: #f0883e; }
+  .legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<h1>OpenCut - Technical Architecture</h1>
+<p class="subtitle">Free, open-source video editor &bull; Next.js 16 + React 19 + TypeScript + Bun</p>
+
+<!-- ==================== 1. HIGH-LEVEL OVERVIEW ==================== -->
+<div class="section">
+  <h2>1. High-Level System Overview</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': { 'fontSize': '14px' }}}%%
+graph TB
+    subgraph USER["User"]
+        Browser["Browser (Edge/Chrome)"]
+    end
+
+    subgraph FRONTEND["Next.js 16 App (apps/web)"]
+        direction TB
+        Pages["App Router Pages"]
+        Components["React 19 Components"]
+        Hooks["30+ Custom Hooks"]
+        Stores["11 Zustand Stores"]
+        Core["EditorCore Singleton"]
+    end
+
+    subgraph SERVICES["Service Layer"]
+        Renderer["Canvas Renderer"]
+        VideoPool["Video Element Pool"]
+        AudioSvc["Web Audio API"]
+        Storage["Storage Service"]
+        VideoCache["Video Cache (WASM)"]
+        ProxyGen["Proxy Generator"]
+    end
+
+    subgraph PERSISTENCE["Persistence Layer"]
+        IDB[("IndexedDB<br/>Projects, Metadata")]
+        OPFS[("OPFS<br/>Media Files")]
+        PG[("PostgreSQL<br/>Auth Only")]
+    end
+
+    subgraph EXTERNAL["External"]
+        BetterAuth["Better Auth"]
+        FFmpegWASM["FFmpeg WASM<br/>(mediabunny)"]
+        GeminiAI["Gemini AI"]
+    end
+
+    Browser --> Pages
+    Pages --> Components
+    Components --> Hooks
+    Hooks --> Stores
+    Hooks --> Core
+    Core --> SERVICES
+    Storage --> IDB
+    Storage --> OPFS
+    BetterAuth --> PG
+    VideoCache --> FFmpegWASM
+    ProxyGen --> FFmpegWASM
+
+    style USER fill:#1a1a2e,stroke:#58a6ff
+    style FRONTEND fill:#161b22,stroke:#58a6ff
+    style SERVICES fill:#161b22,stroke:#7ee787
+    style PERSISTENCE fill:#161b22,stroke:#f0883e
+    style EXTERNAL fill:#161b22,stroke:#bc8cff
+  </div>
+</div>
+
+<!-- ==================== 2. MEDIA IMPORT FLOW ==================== -->
+<div class="section">
+  <h2>2. Media Import Flow</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart LR
+    A["File Input<br/>(drag-drop / picker)"] --> B["useFileUpload()"]
+    B --> C["AddMediaAssetCommand"]
+    C --> D["MediaManager<br/>.addMediaAsset()"]
+    D --> E["Generate UUID"]
+    E --> F["Create MediaAsset<br/>{id, file, url, type, duration}"]
+    F --> G["In-Memory Array<br/>MediaManager.assets[]"]
+    F --> H["StorageService<br/>.saveMediaAsset()"]
+    H --> I[("IndexedDB<br/>Metadata")]
+    H --> J[("OPFS<br/>Raw File")]
+    F --> K["Background Tasks"]
+    K --> L["preExtractAudio()<br/>via mediabunny"]
+    K --> M["preGenerateProxy()<br/>540p video"]
+
+    style A fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+    style G fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+    style I fill:#3a2a1a,stroke:#f0883e,color:#c9d1d9
+    style J fill:#3a2a1a,stroke:#f0883e,color:#c9d1d9
+    style L fill:#2a1a3a,stroke:#bc8cff,color:#c9d1d9
+    style M fill:#2a1a3a,stroke:#bc8cff,color:#c9d1d9
+  </div>
+
+  <h3>Key Files</h3>
+  <table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>hooks/use-file-upload.ts</code></td><td>Drag-drop & file picker handler</td></tr>
+    <tr><td><code>core/managers/media-manager.ts</code></td><td>Media lifecycle: add, remove, load assets</td></tr>
+    <tr><td><code>services/storage/service.ts</code></td><td>Persistence orchestration (IDB + OPFS)</td></tr>
+    <tr><td><code>services/storage/opfs-adapter.ts</code></td><td>Origin Private File System for raw files</td></tr>
+    <tr><td><code>services/storage/indexeddb-adapter.ts</code></td><td>IndexedDB for metadata</td></tr>
+    <tr><td><code>services/proxy/proxy-generator.ts</code></td><td>540p proxy video generation</td></tr>
+    <tr><td><code>lib/media/video-audio-cache.ts</code></td><td>Background audio extraction</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 3. EDITOR CORE ==================== -->
+<div class="section">
+  <h2>3. EditorCore Singleton & Managers</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph TB
+    EC["EditorCore.getInstance()"]
+
+    EC --> PM["PlaybackManager<br/>currentTime, isPlaying, volume<br/>RAF timer, wall-clock sync"]
+    EC --> TM["TimelineManager<br/>tracks[], elements[]<br/>addTrack, insertElement, split"]
+    EC --> SM["ScenesManager<br/>scenes[], activeScene<br/>add, remove, switch"]
+    EC --> PJM["ProjectManager<br/>project state, export<br/>save, load, create"]
+    EC --> MM["MediaManager<br/>assets[]<br/>add, remove, getAssets"]
+    EC --> RM["RendererManager<br/>renderTree (RootNode)<br/>scene graph for canvas"]
+    EC --> CM["CommandManager<br/>history[], redoStack[]<br/>execute, undo, redo"]
+    EC --> SVM["SaveManager<br/>debounced auto-save<br/>markDirty, saveNow"]
+    EC --> AM["AudioManager<br/>Web Audio API<br/>schedule clips, gain"]
+    EC --> SLM["SelectionManager<br/>selected elements<br/>keyframes selection"]
+
+    PM -.->|"subscribe()"| React["React Components<br/>via useEditor()"]
+    TM -.->|"subscribe()"| React
+    SM -.->|"subscribe()"| React
+    MM -.->|"subscribe()"| React
+
+    style EC fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+    style CM fill:#3a1a1a,stroke:#f85149,color:#c9d1d9
+    style React fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+  </div>
+
+  <h3>React Integration Pattern</h3>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant C as Component
+    participant H as useEditor()
+    participant E as EditorCore
+    participant M as Manager
+
+    C->>H: useEditor()
+    H->>E: getInstance()
+    H->>M: subscribe(listener)
+    Note over H: useSyncExternalStore()
+
+    C->>E: editor.timeline.addTrack()
+    E->>M: execute Command
+    M->>M: mutate state
+    M->>H: notify listeners
+    H->>C: React re-render
+  </div>
+</div>
+
+<!-- ==================== 4. TIMELINE & COMMAND SYSTEM ==================== -->
+<div class="section">
+  <h2>4. Timeline Data Model & Command System</h2>
+  <div class="grid">
+    <div>
+      <h3>Data Hierarchy</h3>
+      <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph TB
+    P["TProject"] --> SC["TScene[]"]
+    SC --> TK["TimelineTrack[]"]
+    TK --> EL["TimelineElement[]"]
+    TK --> TR["TransitionInstance[]"]
+    EL --> VE["VideoElement<br/>mediaId, transform, effects, speed"]
+    EL --> IE["ImageElement<br/>mediaId, transform, effects"]
+    EL --> TE["TextElement<br/>content, fontSize, color"]
+    EL --> AE["AudioElement<br/>mediaId, volume, buffer"]
+    EL --> SE["StickerElement<br/>url, transform"]
+
+    TR --> TI["TransitionInstance<br/>type, duration, params"]
+
+    style P fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+    style VE fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+    style IE fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+    style TE fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+    style AE fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+    style TI fill:#3a2a1a,stroke:#f0883e,color:#c9d1d9
+      </div>
+    </div>
+    <div>
+      <h3>Command Pattern (Undo/Redo)</h3>
+      <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart TB
+    A["User Action"] --> B["invokeAction()"]
+    B --> C["Command.execute()"]
+    C --> D["Save prev state"]
+    C --> E["Mutate timeline"]
+    C --> F["Push to history[]"]
+
+    G["Ctrl+Z"] --> H["Command.undo()"]
+    H --> I["Restore prev state"]
+    H --> J["Push to redoStack[]"]
+
+    K["Ctrl+Y"] --> L["Command.redo()"]
+    L --> M["Re-execute"]
+    L --> N["Push back to history[]"]
+
+    style A fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+    style F fill:#3a1a1a,stroke:#f85149,color:#c9d1d9
+    style J fill:#3a2a1a,stroke:#f0883e,color:#c9d1d9
+      </div>
+
+      <h3>70+ Commands</h3>
+      <table>
+        <tr><th>Category</th><th>Commands</th></tr>
+        <tr><td>Track</td><td>Add, Remove</td></tr>
+        <tr><td>Element</td><td>Insert, Update, Delete, Split, Move</td></tr>
+        <tr><td>Trim</td><td>UpdateElementTrim</td></tr>
+        <tr><td>Effects</td><td>Add, Update, Remove clip effects</td></tr>
+        <tr><td>Keyframes</td><td>Upsert, Remove animation keys</td></tr>
+        <tr><td>Transitions</td><td>Add, Update, Remove</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 5. RENDERING PIPELINE ==================== -->
+<div class="section">
+  <h2>5. Rendering Pipeline</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart TB
+    subgraph SCENE_BUILD["Scene Builder"]
+        SB["SceneBuilder<br/>buildRenderTree()"]
+        SB --> RN["RootNode"]
+        RN --> VN["VideoNode"]
+        RN --> IN["ImageNode"]
+        RN --> TN["TextNode"]
+        RN --> SN["StickerNode"]
+        RN --> TRN["TransitionNode"]
+        RN --> EFN["EffectLayerNode"]
+    end
+
+    subgraph PREVIEW["Preview Path (Real-time)"]
+        VP["VideoElementPool<br/>Hidden &lt;video&gt; elements"]
+        VP --> HW["Browser HW Decoder<br/>Native .play()"]
+        HW --> CANVAS["Canvas drawImage()"]
+    end
+
+    subgraph EXPORT["Export Path (Frame-accurate)"]
+        MB["mediabunny<br/>(FFmpeg WASM)"]
+        MB --> FC["Frame Cache<br/>videoCache.getFrameAt()"]
+        FC --> CANVAS2["Canvas drawImage()"]
+    end
+
+    subgraph EFFECTS["Effects Pipeline"]
+        WGL["WebGL Renderer<br/>GLSL Shaders"]
+        WGL --> BLUR["Blur"]
+        WGL --> CC["Color Correct"]
+        WGL --> BR["Brightness"]
+    end
+
+    subgraph TRANSITIONS["Transition Pipeline"]
+        TR2["TransitionRenderer<br/>WebGL"]
+        TR2 --> FADE["Fade"]
+        TR2 --> WIPE["Wipe (L/R/U/D)"]
+        TR2 --> SLIDE["Slide"]
+        TR2 --> ZOOM["Zoom"]
+        TR2 --> DSLV["Dissolve"]
+    end
+
+    VN -->|"isPreview=true"| VP
+    VN -->|"isPreview=false"| MB
+    TRN --> TR2
+    EFN --> WGL
+
+    style PREVIEW fill:#1a3a2a,stroke:#7ee787
+    style EXPORT fill:#3a2a1a,stroke:#f0883e
+    style EFFECTS fill:#2a1a3a,stroke:#bc8cff
+    style TRANSITIONS fill:#1f3a5f,stroke:#58a6ff
+  </div>
+</div>
+
+<!-- ==================== 6. PLAYBACK SYSTEM ==================== -->
+<div class="section">
+  <h2>6. Playback & Audio System</h2>
+  <div class="grid">
+    <div>
+      <h3>Video Playback</h3>
+      <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant U as User
+    participant PM as PlaybackManager
+    participant RAF as RAF Loop
+    participant VP as VideoElementPool
+    participant CR as CanvasRenderer
+
+    U->>PM: play()
+    PM->>PM: playStartWall = now()
+    PM->>VP: startVideoElements()
+    VP->>VP: el.currentTime = sourceTime
+    VP->>VP: el.play()
+
+    loop Every Frame (~16ms)
+        RAF->>PM: updateTime()
+        PM->>PM: elapsed = now() - playStartWall
+        PM->>PM: currentTime = startTime + elapsed
+        PM->>CR: notifyTime(currentTime)
+        CR->>CR: render scene graph
+        CR->>VP: drawImage(video element)
+    end
+
+    U->>PM: pause()
+    PM->>VP: pauseAll()
+      </div>
+    </div>
+    <div>
+      <h3>Audio Scheduling</h3>
+      <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart TB
+    AM["AudioManager"] --> CTX["AudioContext"]
+    CTX --> MG["MasterGain Node"]
+    MG --> OUT["Speakers"]
+
+    AM --> SCHED["scheduleAudioClips()"]
+    SCHED --> LOOK["Lookahead 3s"]
+    LOOK --> BUF["AudioBufferSourceNode"]
+    BUF --> MG
+
+    AM --> ITER["Clip Iterators<br/>(mediabunny AsyncGen)"]
+    ITER --> CHUNK["Audio Chunks"]
+    CHUNK --> BUF
+
+    EVT["'playback-seek' Event"] --> AM
+    AM --> STOP["Stop & Reschedule"]
+
+    style AM fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+    style CTX fill:#2a1a3a,stroke:#bc8cff,color:#c9d1d9
+      </div>
+      <p style="margin-top:12px; font-size:13px; color:#8b949e;">
+        <strong>Why audio transitions are seamless:</strong> Web Audio API pre-schedules
+        buffers 3s ahead. No cold-start latency like &lt;video&gt; elements.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 7. SCRUBBING SYSTEM ==================== -->
+<div class="section">
+  <h2>7. Scrubbing (Playhead Drag) System</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant U as User
+    participant PM as PlaybackManager
+    participant VN as VideoNode
+    participant VP as VideoElementPool
+
+    Note over U,VP: Scrubbing while PAUSED
+    U->>PM: setScrubbing(true)
+    U->>PM: seek(time) [per mousemove]
+    PM->>PM: notifyTime() only (no React re-render)
+    PM->>VN: render at new time
+    VN->>VP: seekIfNeeded(videoTime)
+    VP->>VP: el.currentTime = time (if delta > 16ms)
+    VP->>VP: Queue if already seeking
+    U->>PM: setScrubbing(false)
+
+    Note over U,VP: Scrubbing while PLAYING
+    U->>PM: setScrubbing(true)
+    Note over VP: Video elements keep playing!<br/>Decode pipeline stays warm
+    U->>PM: seek(time) [per mousemove]
+    VN->>VP: Direct seek if drift > 0.15s
+    U->>PM: setScrubbing(false)
+    PM->>PM: Reset wall clock
+    PM->>VP: resyncVideoElements()
+    VP->>VP: el.currentTime = scrubbed position
+  </div>
+</div>
+
+<!-- ==================== 8. DATABASE & PERSISTENCE ==================== -->
+<div class="section">
+  <h2>8. Database & Persistence Architecture</h2>
+  <div class="grid">
+    <div>
+      <h3>Storage Strategy</h3>
+      <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart TB
+    subgraph BROWSER["Browser Storage"]
+        subgraph IDB["IndexedDB"]
+            P[("video-editor-projects<br/>Serialized TProject")]
+            MM[("video-editor-media-{id}<br/>MediaAssetData")]
+            SS[("video-editor-saved-sounds<br/>Sound Effects")]
+            EA[("video-editor-extracted-audio<br/>Audio Metadata")]
+            EAB[("video-editor-extracted-audio-blobs<br/>Audio Data")]
+        end
+        subgraph FS["Origin Private File System"]
+            MF[("media-files-{projectId}<br/>Raw Video/Audio/Image")]
+        end
+    end
+
+    subgraph SERVER["Server (PostgreSQL)"]
+        U[("users<br/>id, email, image")]
+        S[("sessions<br/>token, expiresAt")]
+        AC[("accounts<br/>OAuth providers")]
+        V[("verifications<br/>Email codes")]
+    end
+
+    SaveMgr["SaveManager<br/>debounce 800ms"] --> IDB
+    StorageSvc["StorageService"] --> IDB
+    StorageSvc --> FS
+    BetterAuth["Better Auth"] --> SERVER
+
+    style BROWSER fill:#161b22,stroke:#f0883e
+    style SERVER fill:#161b22,stroke:#7ee787
+    style SaveMgr fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+      </div>
+    </div>
+    <div>
+      <h3>Save Flow</h3>
+      <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant TM as TimelineManager
+    participant SM as SaveManager
+    participant SS as StorageService
+    participant IDB as IndexedDB
+
+    TM->>SM: notify() [state changed]
+    SM->>SM: markDirty()
+    SM->>SM: debounce 800ms
+    SM->>SS: saveProject(project)
+    SS->>SS: Strip AudioBuffers
+    SS->>SS: Serialize to JSON
+    SS->>IDB: put(projectData)
+    Note over IDB: Per-project DB:<br/>video-editor-projects
+      </div>
+
+      <h3>Schema Migrations</h3>
+      <table>
+        <tr><th>Version</th><th>Change</th></tr>
+        <tr><td>v0 → v1</td><td>Initial structure</td></tr>
+        <tr><td>v1 → v2</td><td>Track types</td></tr>
+        <tr><td>...</td><td>...</td></tr>
+        <tr><td>v8 → v9</td><td>Latest schema</td></tr>
+      </table>
+      <p style="font-size:13px; color:#8b949e; margin-top:8px;">
+        9 migration versions. Auto-run on project load.
+        Each in <code>storage/migrations/transformers/</code>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 9. EXPORT FLOW ==================== -->
+<div class="section">
+  <h2>9. Export Flow</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart LR
+    A["User clicks Export"] --> B["ProjectManager<br/>startExport()"]
+    B --> C["SceneExporter"]
+    C --> D["Build RenderTree<br/>(full resolution)"]
+    D --> E["Frame Loop"]
+    E --> F["Render frame N<br/>via CanvasRenderer"]
+    F --> G["VideoCache.getFrameAt()<br/>(mediabunny WASM)"]
+    G --> H["Encode frame<br/>FFmpeg WASM"]
+    H -->|"progress %"| I["UI Progress Bar"]
+    H --> J["Output Buffer<br/>MP4 / WebM / GIF"]
+    J --> K["downloadBuffer()<br/>Save to disk"]
+
+    style A fill:#1f3a5f,stroke:#58a6ff,color:#c9d1d9
+    style G fill:#3a2a1a,stroke:#f0883e,color:#c9d1d9
+    style K fill:#1a3a2a,stroke:#7ee787,color:#c9d1d9
+  </div>
+  <table>
+    <tr><th>Format</th><th>Codec</th><th>Use Case</th></tr>
+    <tr><td>MP4</td><td>H.264</td><td>Universal compatibility</td></tr>
+    <tr><td>WebM</td><td>VP9</td><td>Web-optimized</td></tr>
+    <tr><td>GIF</td><td>-</td><td>Animated images</td></tr>
+    <tr><td>PNG</td><td>-</td><td>Single frame snapshot</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 10. FULL E2E FLOW ==================== -->
+<div class="section">
+  <h2>10. End-to-End: Import → Edit → Export</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': { 'fontSize': '13px' }}}%%
+flowchart TB
+    subgraph IMPORT["1. IMPORT"]
+        A1["File Picker / Drag-Drop"] --> A2["useFileUpload()"]
+        A2 --> A3["AddMediaAssetCommand"]
+        A3 --> A4["MediaManager"]
+        A4 --> A5[("OPFS + IndexedDB")]
+        A4 --> A6["Background: Extract Audio + Proxy"]
+    end
+
+    subgraph EDIT["2. EDIT"]
+        B1["Drag to Timeline"] --> B2["InsertElementCommand"]
+        B2 --> B3["TimelineManager.tracks[]"]
+        B3 --> B4["Apply Effects<br/>(AddClipEffectCommand)"]
+        B3 --> B5["Add Transitions<br/>(AddTransitionCommand)"]
+        B3 --> B6["Trim / Split / Move"]
+        B3 --> B7["Add Keyframes<br/>(UpsertKeyframeCommand)"]
+        B6 --> B8["CommandManager<br/>Undo / Redo Stack"]
+    end
+
+    subgraph PREVIEW["3. PREVIEW"]
+        C1["SceneBuilder.buildRenderTree()"]
+        C1 --> C2["VideoNode + ImageNode + TextNode"]
+        C2 --> C3["VideoElementPool<br/>(HW decode)"]
+        C3 --> C4["CanvasRenderer<br/>drawImage()"]
+        C4 --> C5["Preview Canvas<br/>(60fps RAF)"]
+        C1 --> C6["AudioManager<br/>Web Audio API"]
+        C6 --> C7["Speakers"]
+    end
+
+    subgraph EXPORT["4. EXPORT"]
+        D1["SceneExporter"] --> D2["Frame-by-frame<br/>mediabunny WASM"]
+        D2 --> D3["FFmpeg Encode"]
+        D3 --> D4["MP4 / WebM / GIF"]
+        D4 --> D5["Download"]
+    end
+
+    IMPORT --> EDIT
+    EDIT --> PREVIEW
+    EDIT --> EXPORT
+
+    style IMPORT fill:#1f3a5f,stroke:#58a6ff
+    style EDIT fill:#1a3a2a,stroke:#7ee787
+    style PREVIEW fill:#2a1a3a,stroke:#bc8cff
+    style EXPORT fill:#3a2a1a,stroke:#f0883e
+  </div>
+</div>
+
+<!-- ==================== 11. ZUSTAND STORES ==================== -->
+<div class="section">
+  <h2>11. State Management — Zustand Stores</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+mindmap
+  root((Zustand<br/>11 Stores))
+    Editor State
+      useEditorStore
+        App init state
+      usePreviewStore
+        Layout guides
+        Overlay visibility
+      usePanelStore
+        Panel sizes
+        Persisted
+    Timeline
+      useTimelineStore
+        Snapping
+        Ripple editing
+        Clipboard
+      useMediaPreviewStore
+        Trim preview
+    Properties
+      usePropertiesStore
+        Effects panel target
+      useKeybindingsStore
+        Custom shortcuts
+        Persisted
+    Assets
+      useAssetsStore
+        Panel state
+      useSoundsStore
+        Sound library
+      useStickersStore
+        Sticker library
+    AI
+      useAIStore
+        AI features state
+  </div>
+</div>
+
+<!-- ==================== 12. ACTION SYSTEM ==================== -->
+<div class="section">
+  <h2>12. Action & Keyboard Shortcut System</h2>
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+flowchart LR
+    subgraph DEFINE["Definition"]
+        AD["ACTIONS object<br/>lib/actions/definitions.ts"]
+        AD --> |"50+ actions"| ACT1["toggle-play"]
+        AD --> ACT2["split-selected"]
+        AD --> ACT3["delete-selected"]
+        AD --> ACT4["undo / redo"]
+        AD --> ACT5["zoom-in / zoom-out"]
+    end
+
+    subgraph BIND["Binding"]
+        KB["Keyboard Event"] --> KS["useKeybindingsStore"]
+        KS --> MATCH["Match shortcut<br/>to action name"]
+    end
+
+    subgraph INVOKE["Invocation"]
+        MATCH --> IA["invokeAction(name)"]
+        IA --> AH["useActionHandler()<br/>in component"]
+        AH --> CMD["Execute Command"]
+    end
+
+    style DEFINE fill:#1f3a5f,stroke:#58a6ff
+    style BIND fill:#1a3a2a,stroke:#7ee787
+    style INVOKE fill:#2a1a3a,stroke:#bc8cff
+  </div>
+</div>
+
+<!-- ==================== TECH STACK ==================== -->
+<div class="section">
+  <h2>Tech Stack Summary</h2>
+  <div class="grid">
+    <div>
+      <table>
+        <tr><th>Layer</th><th>Technology</th></tr>
+        <tr><td>Framework</td><td>Next.js 16 + React 19</td></tr>
+        <tr><td>Language</td><td>TypeScript</td></tr>
+        <tr><td>Runtime</td><td>Bun</td></tr>
+        <tr><td>Styling</td><td>Tailwind CSS 4</td></tr>
+        <tr><td>UI Components</td><td>shadcn/ui + Radix</td></tr>
+        <tr><td>State</td><td>Zustand (11 stores)</td></tr>
+        <tr><td>Auth</td><td>Better Auth</td></tr>
+        <tr><td>Database</td><td>PostgreSQL + Drizzle ORM</td></tr>
+        <tr><td>Monorepo</td><td>Turborepo + Bun workspaces</td></tr>
+      </table>
+    </div>
+    <div>
+      <table>
+        <tr><th>Layer</th><th>Technology</th></tr>
+        <tr><td>Video Decode (preview)</td><td>Browser &lt;video&gt; HW decoder</td></tr>
+        <tr><td>Video Decode (export)</td><td>FFmpeg WASM (mediabunny)</td></tr>
+        <tr><td>Audio</td><td>Web Audio API</td></tr>
+        <tr><td>Canvas</td><td>2D Canvas + WebGL (effects)</td></tr>
+        <tr><td>Effects/Transitions</td><td>WebGL + GLSL shaders</td></tr>
+        <tr><td>Client Storage</td><td>IndexedDB + OPFS</td></tr>
+        <tr><td>Desktop</td><td>Tauri 2.x (planned)</td></tr>
+        <tr><td>AI</td><td>Gemini</td></tr>
+        <tr><td>Linting</td><td>Biome</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1f3a5f',
+      primaryTextColor: '#c9d1d9',
+      primaryBorderColor: '#58a6ff',
+      lineColor: '#58a6ff',
+      secondaryColor: '#1a3a2a',
+      tertiaryColor: '#2a1a3a',
+      fontFamily: 'Segoe UI, system-ui, sans-serif'
+    },
+    flowchart: { curve: 'basis', padding: 16 },
+    sequence: { actorMargin: 40 }
+  });
+</script>
+
+</body>
+</html>
