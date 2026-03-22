@@ -108,7 +108,9 @@ interface AssetsPanelStore {
 
 	/* Multi-select */
 	selectedMediaIds: Set<string>;
+	lastSelectedMediaId: string | null;
 	toggleMediaSelection: (id: string) => void;
+	setMediaSelection: (ids: string[]) => void;
 	clearMediaSelection: () => void;
 }
 
@@ -128,6 +130,7 @@ export const useAssetsPanelStore = create<AssetsPanelStore>()(
 			setMediaSort: (key, order) =>
 				set({ mediaSortBy: key, mediaSortOrder: order }),
 			selectedMediaIds: new Set<string>(),
+			lastSelectedMediaId: null,
 			toggleMediaSelection: (id) =>
 				set((state) => {
 					const next = new Set(state.selectedMediaIds);
@@ -136,10 +139,15 @@ export const useAssetsPanelStore = create<AssetsPanelStore>()(
 					} else {
 						next.add(id);
 					}
-					return { selectedMediaIds: next };
+					return { selectedMediaIds: next, lastSelectedMediaId: id };
+				}),
+			setMediaSelection: (ids) =>
+				set({
+					selectedMediaIds: new Set(ids),
+					lastSelectedMediaId: ids.length > 0 ? ids[ids.length - 1] : null,
 				}),
 			clearMediaSelection: () =>
-				set({ selectedMediaIds: new Set<string>() }),
+				set({ selectedMediaIds: new Set<string>(), lastSelectedMediaId: null }),
 		}),
 		{
 			name: "assets-panel",

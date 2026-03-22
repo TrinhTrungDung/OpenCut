@@ -43,7 +43,7 @@ export function PanelView({
 				ref={scrollRef}
 				onScroll={onScroll}
 			>
-				<div className={cn("w-full flex-1 px-2 pt-0", contentClassName)}>
+				<div className={cn("flex min-h-full w-full flex-col px-2 pt-0", contentClassName)}>
 					{children}
 				</div>
 			</div>
