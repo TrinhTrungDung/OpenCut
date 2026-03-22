@@ -105,6 +105,11 @@ interface AssetsPanelStore {
 	mediaSortBy: MediaSortKey;
 	mediaSortOrder: MediaSortOrder;
 	setMediaSort: (key: MediaSortKey, order: MediaSortOrder) => void;
+
+	/* Multi-select */
+	selectedMediaIds: Set<string>;
+	toggleMediaSelection: (id: string) => void;
+	clearMediaSelection: () => void;
 }
 
 export const useAssetsPanelStore = create<AssetsPanelStore>()(
@@ -122,6 +127,19 @@ export const useAssetsPanelStore = create<AssetsPanelStore>()(
 			mediaSortOrder: "asc",
 			setMediaSort: (key, order) =>
 				set({ mediaSortBy: key, mediaSortOrder: order }),
+			selectedMediaIds: new Set<string>(),
+			toggleMediaSelection: (id) =>
+				set((state) => {
+					const next = new Set(state.selectedMediaIds);
+					if (next.has(id)) {
+						next.delete(id);
+					} else {
+						next.add(id);
+					}
+					return { selectedMediaIds: next };
+				}),
+			clearMediaSelection: () =>
+				set({ selectedMediaIds: new Set<string>() }),
 		}),
 		{
 			name: "assets-panel",

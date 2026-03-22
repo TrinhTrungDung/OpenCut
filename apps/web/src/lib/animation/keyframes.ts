@@ -66,7 +66,7 @@ export function getChannel({
 	animations: ElementAnimations | undefined;
 	propertyPath: string;
 }): AnimationChannel | undefined {
-	return animations?.channels[propertyPath];
+	return animations?.channels?.[propertyPath];
 }
 
 function getInterpolationForChannel({

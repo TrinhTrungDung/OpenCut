@@ -33,8 +33,8 @@ function offsetPositionKeyframes({
 	deltaX: number;
 	deltaY: number;
 }): ElementAnimations | null {
-	const xChannel = animations.channels["transform.position.x"] as NumberAnimationChannel | undefined;
-	const yChannel = animations.channels["transform.position.y"] as NumberAnimationChannel | undefined;
+	const xChannel = animations.channels?.["transform.position.x"] as NumberAnimationChannel | undefined;
+	const yChannel = animations.channels?.["transform.position.y"] as NumberAnimationChannel | undefined;
 
 	if (!xChannel && !yChannel) return null;
 

@@ -1,4 +1,5 @@
 export { InsertElementCommand } from "./insert-element";
+export { InsertElementsSameTrackCommand } from "./insert-elements-same-track";
 export { DeleteElementsCommand } from "./delete-elements";
 export { DuplicateElementsCommand } from "./duplicate-elements";
 export { UpdateElementTrimCommand } from "./update-element-trim";

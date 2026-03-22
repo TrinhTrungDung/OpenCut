@@ -1,4 +1,6 @@
 import type { TransitionInstance } from "@/types/transitions";
+import { DEFAULT_TRANSITION_EASING } from "@/types/transitions";
+import { applyTransitionEasing } from "./easing";
 
 /**
  * Computes the transition progress (0..1) for a given time.
@@ -6,6 +8,8 @@ import type { TransitionInstance } from "@/types/transitions";
  *
  * The transition window spans from (elementAEnd - duration) to elementAEnd,
  * where elementAEnd = startTime + duration of the outgoing clip.
+ *
+ * Easing is applied to the raw linear progress before returning.
  */
 export function resolveTransitionProgress({
 	transition,
@@ -27,12 +31,15 @@ export function resolveTransitionProgress({
 		return null;
 	}
 
-	return (time - transitionStart) / transition.duration;
+	const rawProgress = (time - transitionStart) / transition.duration;
+	const easing = transition.easing ?? DEFAULT_TRANSITION_EASING;
+
+	return applyTransitionEasing({ progress: rawProgress, easing });
 }
 
 /**
  * Finds the active transition at a given time and computes its progress.
- * Returns the first matching transition with its progress, or null.
+ * Returns the first matching transition with its eased progress, or null.
  */
 export function findActiveTransition({
 	transitions,

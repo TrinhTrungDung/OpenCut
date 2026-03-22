@@ -35,6 +35,7 @@ export function resolveTransformAtTime({
 	localTime: number;
 }): Transform {
 	const safeLocalTime = Math.max(0, localTime);
+	const pos = baseTransform?.position ?? { x: 0, y: 0 };
 	return {
 		position: {
 			x: getNumberChannelValueAtTime({
@@ -43,7 +44,7 @@ export function resolveTransformAtTime({
 					propertyPath: "transform.position.x",
 				}),
 				time: safeLocalTime,
-				fallbackValue: baseTransform.position.x,
+				fallbackValue: pos.x ?? 0,
 			}),
 			y: getNumberChannelValueAtTime({
 				channel: getNumberChannelForPath({
@@ -51,7 +52,7 @@ export function resolveTransformAtTime({
 					propertyPath: "transform.position.y",
 				}),
 				time: safeLocalTime,
-				fallbackValue: baseTransform.position.y,
+				fallbackValue: pos.y ?? 0,
 			}),
 		},
 		scale: getNumberChannelValueAtTime({
@@ -60,7 +61,7 @@ export function resolveTransformAtTime({
 				propertyPath: "transform.scale",
 			}),
 			time: safeLocalTime,
-			fallbackValue: baseTransform.scale,
+			fallbackValue: baseTransform?.scale ?? 1,
 		}),
 		rotate: getNumberChannelValueAtTime({
 			channel: getNumberChannelForPath({
@@ -68,7 +69,7 @@ export function resolveTransformAtTime({
 				propertyPath: "transform.rotate",
 			}),
 			time: safeLocalTime,
-			fallbackValue: baseTransform.rotate,
+			fallbackValue: baseTransform?.rotate ?? 0,
 		}),
 	};
 }

@@ -1,3 +1,6 @@
+// Wipe left with anti-aliased edge via smoothstep
 vec4 transition(vec2 uv) {
-  return mix(getFromColor(uv), getToColor(uv), step(uv.x, progress));
+  float edge = 0.02;
+  float mask = smoothstep(progress - edge, progress + edge, 1.0 - uv.x);
+  return mix(getToColor(uv), getFromColor(uv), mask);
 }

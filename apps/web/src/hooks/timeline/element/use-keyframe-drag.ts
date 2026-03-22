@@ -78,7 +78,7 @@ export function useKeyframeDrag({
 			deltaTime: number;
 		}) => {
 			const commands: Command[] = keyframeRefs.flatMap((keyframeRef) => {
-				const channel = element.animations?.channels[keyframeRef.propertyPath];
+				const channel = element.animations?.channels?.[keyframeRef.propertyPath];
 				const keyframe = channel?.keyframes.find(
 					(keyframe) => keyframe.id === keyframeRef.keyframeId,
 				);

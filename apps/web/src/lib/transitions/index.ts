@@ -10,3 +10,4 @@ export {
 	resolveTransitionProgress,
 	findActiveTransition,
 } from "./resolve";
+export { applyTransitionEasing } from "./easing";

@@ -20,6 +20,7 @@ import {
 	ToggleTrackMuteCommand,
 	ToggleTrackVisibilityCommand,
 	InsertElementCommand,
+	InsertElementsSameTrackCommand,
 	UpdateElementTrimCommand,
 	UpdateElementDurationCommand,
 	DeleteElementsCommand,
@@ -68,6 +69,17 @@ export class TimelineManager {
 
 	insertElement({ element, placement }: InsertElementParams): void {
 		const command = new InsertElementCommand({ element, placement });
+		this.editor.command.execute({ command });
+	}
+
+	insertElementsSameTrack({
+		elements,
+		startTime,
+	}: {
+		elements: import("@/types/timeline").CreateTimelineElement[];
+		startTime: number;
+	}): void {
+		const command = new InsertElementsSameTrackCommand(elements, startTime);
 		this.editor.command.execute({ command });
 	}
 
@@ -653,7 +665,7 @@ export class TimelineManager {
 	}: {
 		trackId: string;
 		transitionId: string;
-		updates: Partial<Pick<TransitionInstance, "type" | "duration">>;
+		updates: Partial<Pick<TransitionInstance, "type" | "duration" | "easing">>;
 	}): void {
 		const command = new UpdateTransitionCommand(trackId, transitionId, updates);
 		this.editor.command.execute({ command });
