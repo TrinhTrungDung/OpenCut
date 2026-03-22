@@ -71,7 +71,9 @@ export function MediaView() {
 		mediaSortOrder,
 		setMediaSort,
 		selectedMediaIds,
+		lastSelectedMediaId,
 		toggleMediaSelection,
+		setMediaSelection,
 		clearMediaSelection,
 	} = useAssetsPanelStore();
 	const { highlightedId, registerElement } = useRevealItem(
@@ -148,6 +150,7 @@ export function MediaView() {
 	};
 
 	const setPreviewAsset = useMediaPreviewStore((s) => s.setPreviewAsset);
+	const closePreview = useMediaPreviewStore((s) => s.closePreview);
 
 	const handlePreview = useCallback(
 		({ asset }: { asset: MediaAsset }) => {
@@ -157,6 +160,96 @@ export function MediaView() {
 		},
 		[setPreviewAsset],
 	);
+
+	// --- Rubber-band selection (lives here so onMouseDown covers entire panel) ---
+	const [rubberBand, setRubberBand] = useState<{
+		startX: number; startY: number; currentX: number; currentY: number;
+	} | null>(null);
+	const itemElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+	const justFinishedRubberBandRef = useRef(false);
+
+	const registerItemElement = useCallback(
+		(id: string, el: HTMLElement | null) => {
+			if (el) itemElementsRef.current.set(id, el);
+			else itemElementsRef.current.delete(id);
+		},
+		[],
+	);
+
+	const getItemsInRect = useCallback(
+		(rect: { left: number; top: number; right: number; bottom: number }) => {
+			const MIN_PAD = 10;
+			const r = {
+				left: rect.left,
+				top: rect.bottom - rect.top < MIN_PAD ? rect.top - MIN_PAD : rect.top,
+				right: rect.right,
+				bottom: rect.bottom - rect.top < MIN_PAD ? rect.bottom + MIN_PAD : rect.bottom,
+			};
+			const ids: string[] = [];
+			for (const [id, el] of itemElementsRef.current) {
+				const b = el.getBoundingClientRect();
+				if (b.right >= r.left && b.left <= r.right && b.bottom >= r.top && b.top <= r.bottom) {
+					ids.push(id);
+				}
+			}
+			return ids;
+		},
+		[],
+	);
+
+	// Stable refs for callbacks used in global listeners
+	const getItemsInRectRef = useRef(getItemsInRect);
+	getItemsInRectRef.current = getItemsInRect;
+	const setMediaSelectionRef = useRef(setMediaSelection);
+	setMediaSelectionRef.current = setMediaSelection;
+
+	const handlePanelMouseDown = useCallback(
+		(e: React.MouseEvent) => {
+			if (e.button !== 0) return;
+			const target = e.target as HTMLElement;
+			if (target.closest("button") || target.closest("input") || target.closest("video")) return;
+			if (target.closest("[role=option]") || target.closest("[data-mini-preview]")) return;
+
+			e.preventDefault();
+			justFinishedRubberBandRef.current = false;
+			const startX = e.clientX;
+			const startY = e.clientY;
+			let activated = false;
+			const DRAG_THRESHOLD = 5;
+
+			const onMove = (ev: MouseEvent) => {
+				const dx = Math.abs(ev.clientX - startX);
+				const dy = Math.abs(ev.clientY - startY);
+				if (!activated && dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+				activated = true;
+				setRubberBand({ startX, startY, currentX: ev.clientX, currentY: ev.clientY });
+				const rect = {
+					left: Math.min(startX, ev.clientX),
+					top: Math.min(startY, ev.clientY),
+					right: Math.max(startX, ev.clientX),
+					bottom: Math.max(startY, ev.clientY),
+				};
+				setMediaSelectionRef.current(getItemsInRectRef.current(rect));
+			};
+			const onUp = () => {
+				justFinishedRubberBandRef.current = activated;
+				setRubberBand(null);
+				document.removeEventListener("mousemove", onMove);
+				document.removeEventListener("mouseup", onUp);
+			};
+
+			document.addEventListener("mousemove", onMove);
+			document.addEventListener("mouseup", onUp);
+		},
+		[],
+	);
+
+	const rubberBandStyle = rubberBand ? {
+		left: Math.min(rubberBand.startX, rubberBand.currentX),
+		top: Math.min(rubberBand.startY, rubberBand.currentY),
+		width: Math.abs(rubberBand.currentX - rubberBand.startX),
+		height: Math.abs(rubberBand.currentY - rubberBand.startY),
+	} : null;
 
 	const filteredMediaItems = useMemo(() => {
 		const filtered = mediaFiles.filter((item) => !item.ephemeral);
@@ -211,7 +304,19 @@ export function MediaView() {
 						onImport={openFilePicker}
 					/>
 				}
-				className={cn(isDragOver && "bg-accent/30")}
+				className={cn("select-none", isDragOver && "bg-accent/30")}
+				onClick={(e) => {
+					if (justFinishedRubberBandRef.current) {
+						justFinishedRubberBandRef.current = false;
+						return;
+					}
+					const target = e.target as HTMLElement;
+					if (!target.closest("[role=option]") && !target.closest("button") && !target.closest("video") && !target.closest("[data-mini-preview]")) {
+						clearMediaSelection();
+						closePreview();
+					}
+				}}
+				onMouseDown={handlePanelMouseDown}
 				{...dragProps}
 			>
 				{isDragOver || filteredMediaItems.length === 0 ? (
@@ -223,7 +328,7 @@ export function MediaView() {
 					/>
 				) : (
 					<>
-						<MediaMiniPlayer />
+						{selectedMediaIds.size <= 1 && <MediaMiniPlayer />}
 						<MediaItemList
 							items={filteredMediaItems}
 							mode={mediaViewMode}
@@ -231,11 +336,22 @@ export function MediaView() {
 							onPreview={handlePreview}
 							highlightedId={highlightedId}
 							registerElement={registerElement}
-						selectedMediaIds={selectedMediaIds}
-						onToggleSelect={toggleMediaSelection}
-						onClearSelection={clearMediaSelection}
+							registerItemElement={registerItemElement}
+							selectedMediaIds={selectedMediaIds}
+							lastSelectedMediaId={lastSelectedMediaId}
+							onToggleSelect={toggleMediaSelection}
+							onSetSelection={setMediaSelection}
+							onClearSelection={clearMediaSelection}
 						/>
 					</>
+				)}
+
+				{/* Rubber-band selection overlay */}
+				{rubberBandStyle && rubberBandStyle.width > 3 && rubberBandStyle.height > 3 && (
+					<div
+						className="border-primary/60 bg-primary/10 pointer-events-none fixed z-50 rounded-sm border"
+						style={rubberBandStyle}
+					/>
 				)}
 			</PanelView>
 		</>
@@ -399,8 +515,11 @@ function MediaItemList({
 	onPreview,
 	highlightedId,
 	registerElement,
+	registerItemElement,
 	selectedMediaIds,
+	lastSelectedMediaId,
 	onToggleSelect,
+	onSetSelection,
 	onClearSelection,
 }: {
 	items: MediaAsset[];
@@ -409,23 +528,42 @@ function MediaItemList({
 	onPreview: ({ asset }: { asset: MediaAsset }) => void;
 	highlightedId: string | null;
 	registerElement: (id: string, element: HTMLElement | null) => void;
+	registerItemElement: (id: string, element: HTMLElement | null) => void;
 	selectedMediaIds: Set<string>;
+	lastSelectedMediaId: string | null;
 	onToggleSelect: (id: string) => void;
+	onSetSelection: (ids: string[]) => void;
 	onClearSelection: () => void;
 }) {
 	const isGrid = mode === "grid";
 
+	const handleRef = useCallback(
+		(id: string, element: HTMLElement | null) => {
+			registerElement(id, element);
+			registerItemElement(id, element);
+		},
+		[registerElement, registerItemElement],
+	);
+
 	const handleItemClick = useCallback(
 		(e: React.MouseEvent, item: MediaAsset) => {
-			if (e.ctrlKey || e.metaKey) {
+			if (e.shiftKey && lastSelectedMediaId) {
+				e.stopPropagation();
+				const lastIdx = items.findIndex((i) => i.id === lastSelectedMediaId);
+				const curIdx = items.findIndex((i) => i.id === item.id);
+				if (lastIdx !== -1 && curIdx !== -1) {
+					const start = Math.min(lastIdx, curIdx);
+					const end = Math.max(lastIdx, curIdx);
+					onSetSelection(items.slice(start, end + 1).map((i) => i.id));
+				}
+			} else if (e.ctrlKey || e.metaKey) {
 				e.stopPropagation();
 				onToggleSelect(item.id);
-			} else if (selectedMediaIds.size > 0 && !e.ctrlKey && !e.metaKey) {
-				// Clicking without Ctrl clears selection
+			} else if (selectedMediaIds.size > 0) {
 				onClearSelection();
 			}
 		},
-		[onToggleSelect, onClearSelection, selectedMediaIds.size],
+		[onToggleSelect, onClearSelection, onSetSelection, selectedMediaIds.size, lastSelectedMediaId, items],
 	);
 
 	return (
@@ -433,7 +571,9 @@ function MediaItemList({
 			role="listbox"
 			aria-multiselectable="true"
 			aria-label="Media assets"
-			className={cn(isGrid ? "grid gap-2" : "flex flex-col gap-1")}
+			className={cn(
+				isGrid ? "grid gap-3" : "flex flex-col gap-1",
+			)}
 			style={
 				isGrid ? { gridTemplateColumns: "repeat(auto-fill, 160px)" } : undefined
 			}
@@ -443,7 +583,7 @@ function MediaItemList({
 				return (
 					<div
 						key={item.id}
-						ref={(element) => registerElement(item.id, element)}
+						ref={(element) => handleRef(item.id, element)}
 						role="option"
 						aria-selected={isSelected}
 						onClick={(e) => handleItemClick(e, item)}
@@ -456,7 +596,7 @@ function MediaItemList({
 						tabIndex={0}
 						className={cn(
 							"rounded transition-colors",
-							isSelected && "ring-primary ring-2",
+							isSelected && "ring-primary/50 ring-1 bg-primary/10",
 						)}
 					>
 						<MediaItemWithContextMenu
@@ -867,7 +1007,7 @@ function MediaMiniPlayer() {
 	const trimEndPct = videoDuration > 0 ? (trimEnd / videoDuration) * 100 : 100;
 
 	return (
-		<div className="border-b mb-2 pb-2">
+		<div data-mini-preview className="border-b mb-2 pb-2">
 			{/* Video */}
 			<div className="relative aspect-video w-full overflow-hidden rounded bg-black">
 				<video
