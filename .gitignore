@@ -71,3 +71,4 @@ docs/screenshots/*
 docs/journals
 logs.txt
 test-ck
+.mcp.json
