@@ -177,6 +177,22 @@ export const ACTIONS = {
 		description: "Remove transition",
 		category: "editing",
 	},
+	"beat-sync-analyze": {
+		description: "Analyze audio for beat sync",
+		category: "ai",
+	},
+	"beat-sync-apply": {
+		description: "Apply beat markers to timeline",
+		category: "ai",
+	},
+	"add-background-removal": {
+		description: "Add background removal effect to selected clip",
+		category: "ai",
+	},
+	"open-smart-reframe": {
+		description: "Open smart reframe dialog",
+		category: "ai",
+	},
 } as const satisfies Record<string, TActionDefinition>;
 
 export type TAction = keyof typeof ACTIONS;
