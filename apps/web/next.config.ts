@@ -3,6 +3,7 @@ import { withBotId } from "botid/next/config";
 import { withContentCollections } from "@content-collections/next";
 
 const nextConfig: NextConfig = {
+	reactCompiler: true,
 	turbopack: {
 		rules: {
 			"*.glsl": {
