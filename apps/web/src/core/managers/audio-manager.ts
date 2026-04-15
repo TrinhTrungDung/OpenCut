@@ -71,8 +71,11 @@ export class AudioManager {
 		}
 	}
 
+	private lastIsScrubbing = false;
+
 	private handlePlaybackChange = (): void => {
 		const isPlaying = this.editor.playback.getIsPlaying();
+		const isScrubbing = this.editor.playback.getIsScrubbing();
 		const volume = this.editor.playback.getVolume();
 
 		if (volume !== this.lastVolume) {
@@ -80,9 +83,25 @@ export class AudioManager {
 			this.updateGain();
 		}
 
+		// Scrub-mute: when the user grabs the playhead, kill audio immediately.
+		// Resuming from every pointer-move would click/stutter; better to stay
+		// silent until the scrub finishes, then restart at the final position.
+		if (isScrubbing !== this.lastIsScrubbing) {
+			this.lastIsScrubbing = isScrubbing;
+			if (isScrubbing && isPlaying) {
+				this.stopPlayback();
+			} else if (!isScrubbing && isPlaying) {
+				void this.startPlayback({
+					time: this.editor.playback.getCurrentTime(),
+				});
+				this.lastIsPlaying = true;
+				return;
+			}
+		}
+
 		if (isPlaying !== this.lastIsPlaying) {
 			this.lastIsPlaying = isPlaying;
-			if (isPlaying) {
+			if (isPlaying && !isScrubbing) {
 				void this.startPlayback({
 					time: this.editor.playback.getCurrentTime(),
 				});

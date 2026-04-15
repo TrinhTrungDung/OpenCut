@@ -57,7 +57,7 @@ export class StickerNode extends VisualNode<StickerNodeParams> {
 
 		const { source, width, height } = await this.cachedSource;
 
-		this.renderVisual({
+		await this.renderVisual({
 			renderer,
 			source,
 			sourceWidth: width,
