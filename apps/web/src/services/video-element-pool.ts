@@ -13,7 +13,18 @@ interface PoolEntry {
 	lastSeekTime: number;
 	/** Queued seek time while a previous seek is in-flight */
 	pendingSeekTime: number | null;
+	/** Monotonic wall clock of last use (for LRU eviction) */
+	lastUsedAt: number;
 }
+
+/**
+ * Browsers limit concurrent HW-accelerated video decoders (Chrome ≈ 16–32,
+ * Safari much lower). Past that, new elements silently fall back to SW decode
+ * or never deliver frames. A long timeline with many clips can blow past the
+ * cap and wedge preview. Cap us well under the cliff and evict paused LRU
+ * entries as new ones are requested.
+ */
+const MAX_ACTIVE_VIDEO_ELEMENTS = 6;
 
 class VideoElementPool {
 	private pool = new Map<string, PoolEntry>();
@@ -34,10 +45,12 @@ class VideoElementPool {
 	}): HTMLVideoElement {
 		const existing = this.pool.get(elementId);
 		if (existing) {
+			existing.lastUsedAt = performance.now();
 			return existing.element;
 		}
 
 		this.ensureContainer();
+		this.enforceCap();
 
 		const blobUrl = URL.createObjectURL(file);
 		const el = document.createElement("video");
@@ -69,8 +82,27 @@ class VideoElementPool {
 			file,
 			lastSeekTime: -1,
 			pendingSeekTime: null,
+			lastUsedAt: performance.now(),
 		});
 		return el;
+	}
+
+	/**
+	 * Drop paused LRU entries until we're below cap. Never evict currently
+	 * playing elements — they're on-screen and the decoder slot is
+	 * legitimately in use.
+	 */
+	private enforceCap(): void {
+		if (this.pool.size < MAX_ACTIVE_VIDEO_ELEMENTS) return;
+
+		const candidates = [...this.pool.entries()]
+			.filter(([, entry]) => entry.element.paused)
+			.sort(([, a], [, b]) => a.lastUsedAt - b.lastUsedAt);
+
+		while (this.pool.size >= MAX_ACTIVE_VIDEO_ELEMENTS && candidates.length) {
+			const [id] = candidates.shift()!;
+			this.release(id);
+		}
 	}
 
 	/**
@@ -87,6 +119,8 @@ class VideoElementPool {
 	}): boolean {
 		const entry = this.pool.get(elementId);
 		if (!entry) return false;
+
+		entry.lastUsedAt = performance.now();
 
 		// Don't seek during native playback — the <video> is advancing on its own
 		if (!entry.element.paused) return false;
