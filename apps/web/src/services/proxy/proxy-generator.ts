@@ -4,8 +4,8 @@
  * smooth preview playback while preserving full-res originals for export.
  */
 
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { FFmpeg, FFFSType } from "@ffmpeg/ffmpeg";
+import { toBlobURL } from "@ffmpeg/util";
 
 const PROXY_HEIGHT = 540;
 // Intra-only proxies: every frame is a keyframe -> O(1) seek cost, backward
@@ -61,51 +61,65 @@ export async function generateProxy({
 
 	onProgress?.({ progress: 5 });
 
-	const inputName = "input" + getExtension(file.name);
+	// Mount the input File via WORKERFS so FFmpeg reads it lazily without
+	// copying the full buffer into the WASM heap. Previously writeFile +
+	// fetchFile() slurped the entire file into memory — OOM risk on 4K+ clips.
+	// WORKERFS exposes each File under its original .name property.
+	const mountPoint = "/input";
+	const inputName = `${mountPoint}/${file.name}`;
 	const outputName = "proxy.mp4";
 
-	await ff.writeFile(inputName, await fetchFile(file));
+	await ff.mount(FFFSType.WORKERFS, { files: [file] }, mountPoint);
 
-	onProgress?.({ progress: 15 });
+	let data: Uint8Array | string;
+	try {
+		onProgress?.({ progress: 15 });
 
-	ff.on("progress", ({ progress }) => {
-		onProgress?.({ progress: 15 + Math.floor(progress * 75) });
-	});
+		ff.on("progress", ({ progress }) => {
+			onProgress?.({ progress: 15 + Math.floor(progress * 75) });
+		});
 
-	await ff.exec([
-		"-i",
-		inputName,
-		"-vf",
-		`scale=-2:${PROXY_HEIGHT}`,
-		"-c:v",
-		"libx264",
-		"-preset",
-		PROXY_PRESET,
-		"-tune",
-		"fastdecode",
-		"-g",
-		"1", // GOP=1 -> every frame is a keyframe
-		"-keyint_min",
-		"1",
-		"-bf",
-		"0", // no B-frames: no reordering cost during seek
-		"-pix_fmt",
-		"yuv420p", // widest browser hardware-decode support
-		"-b:v",
-		PROXY_BITRATE,
-		"-an", // strip audio — handled separately by audio pipeline
-		"-y",
-		outputName,
-	]);
+		await ff.exec([
+			"-i",
+			inputName,
+			"-vf",
+			`scale=-2:${PROXY_HEIGHT}`,
+			"-c:v",
+			"libx264",
+			"-preset",
+			PROXY_PRESET,
+			"-tune",
+			"fastdecode",
+			"-g",
+			"1", // GOP=1 -> every frame is a keyframe
+			"-keyint_min",
+			"1",
+			"-bf",
+			"0", // no B-frames: no reordering cost during seek
+			"-pix_fmt",
+			"yuv420p", // widest browser hardware-decode support
+			"-b:v",
+			PROXY_BITRATE,
+			"-an", // strip audio — handled separately by audio pipeline
+			"-y",
+			outputName,
+		]);
 
-	onProgress?.({ progress: 92 });
+		onProgress?.({ progress: 92 });
 
-	const data = await ff.readFile(outputName);
+		data = await ff.readFile(outputName);
+	} finally {
+		// Always unmount so the next generateProxy call can re-mount /input.
+		// deleteFile of the output is best-effort (may not exist if exec failed).
+		try {
+			await ff.unmount(mountPoint);
+		} catch {}
+		try {
+			await ff.deleteFile(outputName);
+		} catch {}
+	}
+
 	const blob = new Blob([data], { type: "video/mp4" });
-
-	// Clean up FFmpeg filesystem
-	await ff.deleteFile(inputName);
-	await ff.deleteFile(outputName);
 
 	const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
 	const proxyFile = new File([blob], `${nameWithoutExt}-proxy.mp4`, {
@@ -115,9 +129,4 @@ export async function generateProxy({
 	onProgress?.({ progress: 100 });
 
 	return proxyFile;
-}
-
-function getExtension(filename: string): string {
-	const match = filename.match(/\.[^/.]+$/);
-	return match ? match[0] : ".mp4";
 }
