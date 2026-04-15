@@ -6,6 +6,7 @@ import type {
 } from "@/types/timeline";
 import type { MediaAsset } from "@/types/assets";
 import type { ElementAnimations } from "@/types/animation";
+import type { AudioEffectParams } from "@/lib/audio/audio-effects-config";
 import { canElementHaveAudio } from "@/lib/timeline/element-utils";
 import { canTracktHaveAudio } from "@/lib/timeline";
 import { mediaSupportsAudio } from "@/lib/media/media-utils";
@@ -197,6 +198,8 @@ export interface AudioClipSource {
 	muted: boolean;
 	/** Playback speed multiplier (default 1.0) */
 	speed: number;
+	/** Per-clip audio effects (EQ, filter). */
+	audioEffects?: AudioEffectParams;
 }
 
 async function fetchLibraryAudioSource({
@@ -256,6 +259,7 @@ async function fetchLibraryAudioClip({
 			trimEnd: element.trimEnd,
 			muted,
 			speed: element.speed ?? 1,
+			audioEffects: element.audioEffects,
 		};
 	} catch (error) {
 		console.warn("Failed to fetch library audio:", error);
@@ -288,6 +292,8 @@ function collectMediaAudioClip({
 	mediaAsset: MediaAsset;
 	muted: boolean;
 }): AudioClipSource {
+	const audioEffects =
+		"audioEffects" in element ? element.audioEffects : undefined;
 	return {
 		id: element.id,
 		sourceKey: mediaAsset.id,
@@ -298,6 +304,7 @@ function collectMediaAudioClip({
 		trimEnd: element.trimEnd,
 		muted,
 		speed: element.speed ?? 1,
+		audioEffects,
 	};
 }
 
@@ -437,6 +444,7 @@ export async function collectAudioClips({
 								trimEnd: el.trimEnd,
 								muted,
 								speed: el.speed ?? 1,
+								audioEffects: el.audioEffects,
 							};
 						}),
 					);

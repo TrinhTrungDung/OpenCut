@@ -1,4 +1,5 @@
 import type { ElementAnimations } from "./animation";
+import type { AudioEffectParams } from "@/lib/audio/audio-effects-config";
 import type { ColorCorrectionParams } from "./color-correction";
 import type { Effect, EffectParamValues } from "./effects";
 import type { BlendMode, Transform } from "./rendering";
@@ -77,6 +78,8 @@ interface BaseAudioElement extends BaseTimelineElement {
 	muted?: boolean;
 	buffer?: AudioBuffer;
 	speedCurve?: SpeedCurvePoint[];
+	/** Per-clip audio effects (EQ, filter). */
+	audioEffects?: AudioEffectParams;
 }
 
 export interface UploadAudioElement extends BaseAudioElement {
@@ -115,6 +118,8 @@ export interface VideoElement extends BaseTimelineElement {
 	effects?: Effect[];
 	speedCurve?: SpeedCurvePoint[];
 	colorCorrection?: ColorCorrectionParams;
+	/** Per-clip audio effects (EQ, filter). */
+	audioEffects?: AudioEffectParams;
 }
 
 export interface ImageElement extends BaseTimelineElement {
@@ -186,7 +191,8 @@ export type ElementUpdatePatch =
 	| { volume: number }
 	| { speed: number }
 	| { speedCurve: SpeedCurvePoint[] }
-	| { colorCorrection: ColorCorrectionParams };
+	| { colorCorrection: ColorCorrectionParams }
+	| { audioEffects: AudioEffectParams };
 
 export type TimelineElement =
 	| AudioElement
