@@ -76,7 +76,7 @@ export abstract class VisualNode<
 		);
 	}
 
-	protected renderVisual({
+	protected async renderVisual({
 		renderer,
 		source,
 		sourceWidth,
@@ -88,7 +88,7 @@ export abstract class VisualNode<
 		sourceWidth: number;
 		sourceHeight: number;
 		timelineTime: number;
-	}): void {
+	}): Promise<void> {
 		renderer.context.save();
 
 		const animationLocalTime = this.getAnimationLocalTime({ time: timelineTime });
@@ -160,20 +160,29 @@ export abstract class VisualNode<
 				localTime: animationLocalTime,
 			});
 			const definition = getEffect({ effectType: effect.type });
-			const passes = definition.renderer.passes.map((pass) => ({
-				fragmentShader: pass.fragmentShader,
-				uniforms: pass.uniforms({
+			if (definition.renderer.type === "custom") {
+				currentResult = await definition.renderer.process({
+					source: currentResult,
+					width: Math.round(scaledWidth),
+					height: Math.round(scaledHeight),
 					effectParams: resolvedParams,
-					width: scaledWidth,
-					height: scaledHeight,
-				}),
-			}));
-			currentResult = webglEffectRenderer.applyEffect({
-				source: currentResult,
-				width: Math.round(scaledWidth),
-				height: Math.round(scaledHeight),
-				passes,
-			});
+				});
+			} else {
+				const passes = definition.renderer.passes.map((pass) => ({
+					fragmentShader: pass.fragmentShader,
+					uniforms: pass.uniforms({
+						effectParams: resolvedParams,
+						width: scaledWidth,
+						height: scaledHeight,
+					}),
+				}));
+				currentResult = webglEffectRenderer.applyEffect({
+					source: currentResult,
+					width: Math.round(scaledWidth),
+					height: Math.round(scaledHeight),
+					passes,
+				});
+			}
 		}
 
 		renderer.context.drawImage(

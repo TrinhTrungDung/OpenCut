@@ -58,7 +58,34 @@ export interface WebGLEffectRenderer {
 	passes: WebGLEffectPass[];
 }
 
-export type EffectRenderer = WebGLEffectRenderer;
+/** Custom renderer that gets full canvas access for effects needing external processing (e.g. MediaPipe segmentation) */
+export interface CustomEffectRenderer {
+	type: "custom";
+	process(params: {
+		source: CanvasImageSource;
+		width: number;
+		height: number;
+		effectParams: EffectParamValues;
+	}): Promise<CanvasImageSource>;
+}
+
+/** WebGPU effect pass definition — WGSL shader + uniform builder */
+export interface WebGPUEffectPass {
+	shaderModule: string;
+	uniforms(params: {
+		effectParams: EffectParamValues;
+		width: number;
+		height: number;
+	}): Record<string, number | number[]>;
+}
+
+/** WebGPU-accelerated effect renderer (used when GPU device is available) */
+export interface WebGPUEffectRenderer {
+	type: "webgpu";
+	passes: WebGPUEffectPass[];
+}
+
+export type EffectRenderer = WebGLEffectRenderer | CustomEffectRenderer;
 
 export interface EffectDefinition {
 	type: string;
@@ -66,4 +93,6 @@ export interface EffectDefinition {
 	keywords: string[];
 	params: EffectParamDefinition[];
 	renderer: EffectRenderer;
+	/** Optional WebGPU renderer — used when GPU device is available, falls back to `renderer` */
+	gpuRenderer?: WebGPUEffectRenderer;
 }

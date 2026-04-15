@@ -1,12 +1,17 @@
 import { createOffscreenCanvas } from "./canvas-utils";
 import { applyMultiPassEffect } from "./webgl-utils";
 import type { EffectPassData } from "./webgl-utils";
+import { getGPUDeviceSync } from "./gpu-device";
+import { applyGPUEffect } from "./gpu-effect-renderer";
+import type { GPUEffectPass } from "./gpu-effect-renderer";
 
 export interface ApplyEffectParams {
 	source: CanvasImageSource;
 	width: number;
 	height: number;
 	passes: EffectPassData[];
+	/** Optional WebGPU passes — used when GPU device is available */
+	gpuPasses?: GPUEffectPass[];
 }
 
 let gl: WebGLRenderingContext | null = null;
@@ -36,12 +41,36 @@ function getOrCreateCanvas({
 	return canvas;
 }
 
+/**
+ * Unified effect renderer facade.
+ * Delegates to WebGPU when available and gpuPasses are provided,
+ * falls back to WebGL1 otherwise.
+ */
 function applyEffect({
 	source,
 	width,
 	height,
 	passes,
+	gpuPasses,
 }: ApplyEffectParams): OffscreenCanvas | HTMLCanvasElement {
+	// Try WebGPU path first
+	const gpuDevice = getGPUDeviceSync();
+	if (gpuDevice && gpuPasses && gpuPasses.length > 0) {
+		try {
+			return applyGPUEffect({
+				device: gpuDevice,
+				source,
+				width,
+				height,
+				passes: gpuPasses,
+			});
+		} catch (err) {
+			// WebGPU failed — fall through to WebGL1
+			console.warn("[webgl-effect-renderer] WebGPU pass failed, falling back to WebGL1:", err);
+		}
+	}
+
+	// WebGL1 fallback path (original implementation, unchanged)
 	const targetCanvas = getOrCreateCanvas({ width, height });
 	const context = gl;
 	if (!context) {

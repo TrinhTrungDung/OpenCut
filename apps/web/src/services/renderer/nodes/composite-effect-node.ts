@@ -45,20 +45,42 @@ export class CompositeEffectNode extends BaseNode<CompositeEffectNodeParams> {
 		const offsetX = (renderer.width - scaledWidth) / 2;
 		const offsetY = (renderer.height - scaledHeight) / 2;
 
-		const passes = effectDefinition.renderer.passes.map((pass) => ({
-			fragmentShader: pass.fragmentShader,
-			uniforms: pass.uniforms({
-				effectParams: this.params.effectParams,
+		let effectResult: CanvasImageSource;
+		if (effectDefinition.renderer.type === "custom") {
+			effectResult = await effectDefinition.renderer.process({
+				source: offscreen as CanvasImageSource,
 				width: renderer.width,
 				height: renderer.height,
-			}),
-		}));
-		const effectResult = webglEffectRenderer.applyEffect({
-			source: offscreen as CanvasImageSource,
-			width: renderer.width,
-			height: renderer.height,
-			passes,
-		});
+				effectParams: this.params.effectParams,
+			});
+		} else {
+			const passes = effectDefinition.renderer.passes.map((pass) => ({
+				fragmentShader: pass.fragmentShader,
+				uniforms: pass.uniforms({
+					effectParams: this.params.effectParams,
+					width: renderer.width,
+					height: renderer.height,
+				}),
+			}));
+
+			// Build WebGPU passes if the effect definition provides them
+			const gpuPasses = effectDefinition.gpuRenderer?.passes.map((pass) => ({
+				shaderModule: pass.shaderModule,
+				uniforms: pass.uniforms({
+					effectParams: this.params.effectParams,
+					width: renderer.width,
+					height: renderer.height,
+				}),
+			}));
+
+			effectResult = webglEffectRenderer.applyEffect({
+				source: offscreen as CanvasImageSource,
+				width: renderer.width,
+				height: renderer.height,
+				passes,
+				gpuPasses,
+			});
+		}
 
 		renderer.context.save();
 		renderer.context.drawImage(
