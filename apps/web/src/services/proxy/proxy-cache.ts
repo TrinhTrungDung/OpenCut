@@ -4,6 +4,7 @@
  * serve from cache during playback.
  */
 
+import { measureProxyThroughput } from "@/lib/perf";
 import { generateProxy } from "./proxy-generator";
 
 interface ProxyCacheEntry {
@@ -70,17 +71,19 @@ async function doGenerate({
 	videoFile: File;
 }): Promise<ProxyCacheEntry | null> {
 	try {
-		const file = await generateProxy({
-			file: videoFile,
-			onProgress: ({ progress }) => {
-				const listeners = progressListeners.get(mediaAssetId);
-				if (listeners) {
-					for (const listener of listeners) {
-						listener(progress);
+		const file = await measureProxyThroughput(videoFile, () =>
+			generateProxy({
+				file: videoFile,
+				onProgress: ({ progress }) => {
+					const listeners = progressListeners.get(mediaAssetId);
+					if (listeners) {
+						for (const listener of listeners) {
+							listener(progress);
+						}
 					}
-				}
-			},
-		});
+				},
+			}),
+		);
 
 		return { file };
 	} catch (error) {

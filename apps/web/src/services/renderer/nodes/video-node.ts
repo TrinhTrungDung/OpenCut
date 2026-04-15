@@ -52,7 +52,7 @@ export class VideoNode extends VisualNode<VideoNodeParams> {
 				? HTMLMediaElement.HAVE_METADATA
 				: HTMLMediaElement.HAVE_CURRENT_DATA;
 			if (el.readyState >= minReady && el.videoWidth > 0) {
-				this.renderVisual({
+				await this.renderVisual({
 					renderer,
 					source: el,
 					sourceWidth: el.videoWidth || renderer.width,
@@ -73,7 +73,7 @@ export class VideoNode extends VisualNode<VideoNodeParams> {
 		});
 
 		if (frame) {
-			this.renderVisual({
+			await this.renderVisual({
 				renderer,
 				source: frame.canvas,
 				sourceWidth: frame.canvas.width,

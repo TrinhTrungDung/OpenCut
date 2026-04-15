@@ -162,6 +162,9 @@ export function renderPreview({
 			? params
 			: buildDefaultParams({ effectType });
 
+	// Custom renderers (e.g. background removal) don't support preview thumbnails
+	if (definition.renderer.type !== "webgl") return;
+
 	const passes = definition.renderer.passes.map((pass) => ({
 		fragmentShader: pass.fragmentShader,
 		uniforms: pass.uniforms({

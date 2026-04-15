@@ -4,6 +4,8 @@
  * Replaces WASM decoding entirely for preview rendering.
  */
 
+import { markScrubStart } from "@/lib/perf";
+
 interface PoolEntry {
 	element: HTMLVideoElement;
 	blobUrl: string;
@@ -98,6 +100,7 @@ class VideoElementPool {
 				// The seeked handler will apply it when the current seek finishes.
 				entry.pendingSeekTime = time;
 			} else {
+				markScrubStart();
 				entry.element.currentTime = time;
 				entry.lastSeekTime = time;
 				entry.pendingSeekTime = null;

@@ -295,20 +295,29 @@ export class TextNode extends BaseNode<TextNodeParams> {
 				localTime,
 			});
 			const definition = getEffect({ effectType: effect.type });
-			const passes = definition.renderer.passes.map((pass) => ({
-				fragmentShader: pass.fragmentShader,
-				uniforms: pass.uniforms({
-					effectParams: resolvedParams,
+			if (definition.renderer.type === "custom") {
+				currentSource = await definition.renderer.process({
+					source: currentSource,
 					width: renderer.width,
 					height: renderer.height,
-				}),
-			}));
-			currentSource = webglEffectRenderer.applyEffect({
-				source: currentSource,
-				width: renderer.width,
-				height: renderer.height,
-				passes,
-			});
+					effectParams: resolvedParams,
+				});
+			} else {
+				const passes = definition.renderer.passes.map((pass) => ({
+					fragmentShader: pass.fragmentShader,
+					uniforms: pass.uniforms({
+						effectParams: resolvedParams,
+						width: renderer.width,
+						height: renderer.height,
+					}),
+				}));
+				currentSource = webglEffectRenderer.applyEffect({
+					source: currentSource,
+					width: renderer.width,
+					height: renderer.height,
+					passes,
+				});
+			}
 		}
 
 		renderer.context.save();
