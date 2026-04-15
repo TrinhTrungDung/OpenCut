@@ -69,6 +69,22 @@ export interface CustomEffectRenderer {
 	}): Promise<CanvasImageSource>;
 }
 
+/** WebGPU effect pass definition — WGSL shader + uniform builder */
+export interface WebGPUEffectPass {
+	shaderModule: string;
+	uniforms(params: {
+		effectParams: EffectParamValues;
+		width: number;
+		height: number;
+	}): Record<string, number | number[]>;
+}
+
+/** WebGPU-accelerated effect renderer (used when GPU device is available) */
+export interface WebGPUEffectRenderer {
+	type: "webgpu";
+	passes: WebGPUEffectPass[];
+}
+
 export type EffectRenderer = WebGLEffectRenderer | CustomEffectRenderer;
 
 export interface EffectDefinition {
@@ -77,4 +93,6 @@ export interface EffectDefinition {
 	keywords: string[];
 	params: EffectParamDefinition[];
 	renderer: EffectRenderer;
+	/** Optional WebGPU renderer — used when GPU device is available, falls back to `renderer` */
+	gpuRenderer?: WebGPUEffectRenderer;
 }

@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
 				loaders: [require.resolve("raw-loader")],
 				as: "*.js",
 			},
+			"*.wgsl": {
+				loaders: [require.resolve("raw-loader")],
+				as: "*.js",
+			},
 		},
 	},
 	compiler: {

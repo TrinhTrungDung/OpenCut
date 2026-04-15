@@ -62,11 +62,23 @@ export class CompositeEffectNode extends BaseNode<CompositeEffectNodeParams> {
 					height: renderer.height,
 				}),
 			}));
+
+			// Build WebGPU passes if the effect definition provides them
+			const gpuPasses = effectDefinition.gpuRenderer?.passes.map((pass) => ({
+				shaderModule: pass.shaderModule,
+				uniforms: pass.uniforms({
+					effectParams: this.params.effectParams,
+					width: renderer.width,
+					height: renderer.height,
+				}),
+			}));
+
 			effectResult = webglEffectRenderer.applyEffect({
 				source: offscreen as CanvasImageSource,
 				width: renderer.width,
 				height: renderer.height,
 				passes,
+				gpuPasses,
 			});
 		}
 

@@ -1,5 +1,6 @@
 import type { EffectDefinition } from "@/types/effects";
 import colorCorrectionShader from "./color-correction.frag.glsl";
+import colorCorrectionWGSL from "./color-correction.frag.wgsl";
 import { buildColorMatrix } from "./color-matrix";
 
 export const colorCorrectionEffectDefinition: EffectDefinition = {
@@ -122,6 +123,33 @@ export const colorCorrectionEffectDefinition: EffectDefinition = {
 							matrix[14],
 							matrix[15],
 						],
+						u_temperature: Number(effectParams.temperature ?? 0) / 100,
+						u_tint: Number(effectParams.tint ?? 0) / 100,
+						u_highlights: Number(effectParams.highlights ?? 0) / 100,
+						u_shadows: Number(effectParams.shadows ?? 0) / 100,
+						u_hueShift: Number(effectParams.hueShift ?? 0),
+					};
+				},
+			},
+		],
+	},
+	gpuRenderer: {
+		type: "webgpu",
+		passes: [
+			{
+				shaderModule: colorCorrectionWGSL,
+				uniforms: ({ effectParams }) => {
+					const matrix = buildColorMatrix({
+						brightness: Number(effectParams.brightness ?? 0),
+						contrast: Number(effectParams.contrast ?? 0),
+						exposure: Number(effectParams.exposure ?? 0),
+						saturation: Number(effectParams.saturation ?? 0),
+					});
+					return {
+						u_colorRow0: [matrix[0], matrix[1], matrix[2], matrix[3]],
+						u_colorRow1: [matrix[4], matrix[5], matrix[6], matrix[7]],
+						u_colorRow2: [matrix[8], matrix[9], matrix[10], matrix[11]],
+						u_colorRow3: [matrix[12], matrix[13], matrix[14], matrix[15]],
 						u_temperature: Number(effectParams.temperature ?? 0) / 100,
 						u_tint: Number(effectParams.tint ?? 0) / 100,
 						u_highlights: Number(effectParams.highlights ?? 0) / 100,
