@@ -1,5 +1,5 @@
 import { NumberField } from "@/components/ui/number-field";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { clamp, isNearlyEqual } from "@/utils/math";
 import type { AnimationPropertyPath } from "@/types/animation";
 import type { VisualElement } from "@/types/timeline";
@@ -62,9 +62,9 @@ export function TransformSection({
 	trackId: string;
 	showTopBorder?: boolean;
 }) {
-	const editor = useEditor();
+	const { playback, timeline } = useManagers("playback", "timeline");
 	const [isScaleLocked, setIsScaleLocked] = useState(false);
-	const playheadTime = editor.playback.getCurrentTime();
+	const playheadTime = playback.getCurrentTime();
 	const localTime = getElementLocalTime({
 		timelineTime: playheadTime,
 		elementStartTime: element.startTime,
@@ -215,13 +215,13 @@ export function TransformSection({
 				});
 			}
 
-			editor.timeline.removeKeyframes({
+			timeline.removeKeyframes({
 				keyframes: keyframesToRemove,
 			});
 			return;
 		}
 
-		editor.timeline.upsertKeyframes({
+		timeline.upsertKeyframes({
 			keyframes: [
 				{
 					trackId,

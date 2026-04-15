@@ -5,7 +5,8 @@ import {
 	useRef,
 	type MouseEvent as ReactMouseEvent,
 } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import { useKeyframeSelection } from "./use-keyframe-selection";
 import { snapTimeToFrame, getSnappedSeekTime } from "@/lib/time";
 import { timelineTimeToSnappedPixels } from "@/lib/timeline";
@@ -44,7 +45,8 @@ export function useKeyframeDrag({
 	element: TimelineElement;
 	displayedStartTime: number;
 }) {
-	const editor = useEditor();
+	const { playback, timeline, project } = useManagers("playback", "timeline", "project");
+	const editor = useEditorCore();
 	const {
 		selectedKeyframes,
 		isKeyframeSelected,
@@ -60,7 +62,7 @@ export function useKeyframeDrag({
 	const pendingDragRef = useRef<PendingKeyframeDrag | null>(null);
 	const mouseDownXRef = useRef<number | null>(null);
 
-	const activeProject = editor.project.getActive();
+	const activeProject = project.getActive();
 	const fps = activeProject.settings.fps;
 
 	const pixelsPerSecond = TIMELINE_CONSTANTS.PIXELS_PER_SECOND * zoomLevel;
@@ -239,13 +241,13 @@ export function useKeyframeDrag({
 
 			if (wasDrag) return;
 
-			const duration = editor.timeline.getTotalDuration();
+			const duration = timeline.getTotalDuration();
 			const seekTime = getSnappedSeekTime({
 				rawTime: displayedStartTime + indicatorTime,
 				duration,
 				fps,
 			});
-			editor.playback.seek({ time: seekTime });
+			playback.seek({ time: seekTime });
 
 			if (event.shiftKey) {
 				selectKeyframeRange({
@@ -261,7 +263,7 @@ export function useKeyframeDrag({
 				isMultiKey: event.metaKey || event.ctrlKey,
 			});
 		},
-		[toggleKeyframeSelection, selectKeyframeRange, editor, displayedStartTime, fps],
+		[toggleKeyframeSelection, selectKeyframeRange, playback, timeline, displayedStartTime, fps],
 	);
 
 	const getVisualOffsetPx = useCallback(

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useMediaPreviewStore } from "@/stores/media-preview-store";
 import { buildElementFromMedia } from "@/lib/timeline/element-utils";
 import { formatDuration } from "@/components/editor/panels/assets/views/assets";
@@ -17,7 +17,7 @@ import { Plus } from "lucide-react";
 export function MediaSourcePreview() {
 	const { previewAsset, trimStart, trimEnd, closePreview } =
 		useMediaPreviewStore();
-	const editor = useEditor();
+	const { playback, timeline } = useManagers("playback", "timeline");
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [currentTime, setCurrentTime] = useState(0);
@@ -84,20 +84,20 @@ export function MediaSourcePreview() {
 			mediaType: previewAsset.type,
 			name: previewAsset.name,
 			duration: trimmedDuration,
-			startTime: editor.playback.getCurrentTime(),
+			startTime: playback.getCurrentTime(),
 		});
 
 		if ("trimStart" in element) {
 			(element as { trimStart: number }).trimStart = trimStart;
 		}
 
-		editor.timeline.insertElement({
+		timeline.insertElement({
 			element,
 			placement: { mode: "auto" },
 		});
 
 		closePreview();
-	}, [previewAsset, trimStart, trimEnd, editor, closePreview]);
+	}, [previewAsset, trimStart, trimEnd, playback, timeline, closePreview]);
 
 	if (!previewAsset || !previewAsset.url) return null;
 

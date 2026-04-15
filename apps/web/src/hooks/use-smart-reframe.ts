@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useSmartReframeStore } from "@/stores/smart-reframe-store";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import { computeReframeFromFile } from "@/lib/smart-reframe";
 import type { ReframePreset } from "@/types/smart-reframe";
 
@@ -11,7 +11,7 @@ import type { ReframePreset } from "@/types/smart-reframe";
  * and compute an optimal crop region for a target aspect ratio.
  */
 export function useSmartReframe() {
-	const editor = useEditor();
+	const project = useProject();
 	const { status, progress, result, error, isOpen } = useSmartReframeStore();
 	const { setStatus, setProgress, setResult, setError, open, close, reset } =
 		useSmartReframeStore();
@@ -48,7 +48,7 @@ export function useSmartReframe() {
 		setStatus("applying");
 
 		try {
-			await editor.project.updateSettings({
+			await project.updateSettings({
 				settings: {
 					canvasSize: {
 						width: result.outputWidth,
@@ -65,7 +65,7 @@ export function useSmartReframe() {
 			setError(message);
 			setStatus("error");
 		}
-	}, [result, editor, setStatus, setError, close]);
+	}, [result, project, setStatus, setError, close]);
 
 	return {
 		status,

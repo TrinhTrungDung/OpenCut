@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Effect } from "@/types/effects";
 import type { VisualElement } from "@/types/timeline";
 import { getEffect } from "@/lib/effects/registry";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { usePropertiesStore } from "@/stores/properties-store";
 import {
 	Section,
@@ -34,7 +34,7 @@ export function ClipEffectsProperties({
 	const closeClipEffects = usePropertiesStore(
 		(state) => state.closeClipEffects,
 	);
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const effects = element.effects ?? [];
 
 	useEffect(() => {
@@ -55,7 +55,7 @@ export function ClipEffectsProperties({
 
 	const handleDrop = ({ toIndex }: { toIndex: number }) => {
 		if (dragIndex !== null && dragIndex !== toIndex) {
-			editor.timeline.reorderClipEffects({
+			timeline.reorderClipEffects({
 				trackId,
 				elementId: element.id,
 				fromIndex: dragIndex,
@@ -126,7 +126,7 @@ function ClipEffectSection({
 	element: VisualElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const definition = getEffect({ effectType: effect.type });
 
 	const previewParam = ({ key }: { key: string }) => (value: number | string | boolean) => {
@@ -135,7 +135,7 @@ function ClipEffectSection({
 				? existing
 				: { ...existing, params: { ...existing.params, [key]: value } },
 		);
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [
 				{
 					trackId,
@@ -146,17 +146,17 @@ function ClipEffectSection({
 		});
 	};
 
-	const commitParam = () => editor.timeline.commitPreview();
+	const commitParam = () => timeline.commitPreview();
 
 	const toggleEffect = () =>
-		editor.timeline.toggleClipEffect({
+		timeline.toggleClipEffect({
 			trackId,
 			elementId: element.id,
 			effectId: effect.id,
 		});
 
 	const removeEffect = () =>
-		editor.timeline.removeClipEffect({
+		timeline.removeClipEffect({
 			trackId,
 			elementId: element.id,
 			effectId: effect.id,

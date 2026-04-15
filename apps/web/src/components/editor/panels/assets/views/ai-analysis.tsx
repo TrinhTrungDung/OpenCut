@@ -5,7 +5,7 @@ import { PanelView } from "@/components/editor/panels/assets/views/base-view";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useAIStore } from "@/stores/ai-store";
 import { videoAnalyzer } from "@/services/ai/video-analyzer";
 import type { AIAnalysisResult, AISceneSegment } from "@/types/ai";
@@ -17,7 +17,7 @@ function formatTime(seconds: number): string {
 }
 
 export function AIAnalysisView() {
-	const editor = useEditor();
+	const { playback, media } = useManagers("playback", "media");
 	const {
 		apiKey,
 		model,
@@ -35,7 +35,7 @@ export function AIAnalysisView() {
 		}
 
 		// Find first video asset
-		const assets = editor.media.getAssets();
+		const assets = media.getAssets();
 		const videoAsset = assets.find((a) => a.type === "video");
 		if (!videoAsset || !videoAsset.url) {
 			setError("No video asset found. Import a video to analyze.");
@@ -62,13 +62,13 @@ export function AIAnalysisView() {
 			);
 			setAnalysisStatus("error");
 		}
-	}, [apiKey, model, editor, setAnalysisResult, setAnalysisStatus]);
+	}, [apiKey, model, media, setAnalysisResult, setAnalysisStatus]);
 
 	const handleSeek = useCallback(
 		(time: number) => {
-			editor.playback.seek({ time });
+			playback.seek({ time });
 		},
-		[editor],
+		[playback],
 	);
 
 	return (

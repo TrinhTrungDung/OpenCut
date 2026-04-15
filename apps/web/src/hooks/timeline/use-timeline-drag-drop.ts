@@ -1,5 +1,6 @@
 import { useState, useCallback, type RefObject } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import { processMediaAssets } from "@/lib/media/processing";
 import { toast } from "sonner";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
@@ -37,15 +38,16 @@ export function useTimelineDragDrop({
 	tracksScrollRef,
 	zoomLevel,
 }: UseTimelineDragDropProps) {
-	const editor = useEditor();
+	const { playback, timeline, project, media } = useManagers("playback", "timeline", "project", "media");
+	const editor = useEditorCore();
 	const [isDragOver, setIsDragOver] = useState(false);
 	const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 	const [dragElementType, setElementType] = useState<ElementType | null>(null);
 
-	const tracks = editor.timeline.getTracks();
-	const currentTime = editor.playback.getCurrentTime();
-	const mediaAssets = editor.media.getAssets();
-	const activeProject = editor.project.getActive();
+	const tracks = timeline.getTracks();
+	const currentTime = playback.getCurrentTime();
+	const mediaAssets = media.getAssets();
+	const activeProject = project.getActive();
 
 	const getSnappedTime = useCallback(
 		({ time }: { time: number }) => {
@@ -240,12 +242,12 @@ export function useTimelineDragDrop({
 
 			const track = tracks[target.trackIndex];
 			if (!track) return;
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				placement: { mode: "explicit", trackId: track.id },
 				element,
 			});
 		},
-		[editor.command, editor.timeline, tracks],
+		[editor.command, timeline, tracks],
 	);
 
 	const executeStickerDrop = useCallback(
@@ -276,12 +278,12 @@ export function useTimelineDragDrop({
 
 			const track = tracks[target.trackIndex];
 			if (!track) return;
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				placement: { mode: "explicit", trackId: track.id },
 				element,
 			});
 		},
-		[editor.command, editor.timeline, tracks],
+		[editor.command, timeline, tracks],
 	);
 
 	const executeMediaDrop = useCallback(
@@ -332,12 +334,12 @@ export function useTimelineDragDrop({
 
 			const track = tracks[target.trackIndex];
 			if (!track) return;
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				placement: { mode: "explicit", trackId: track.id },
 				element,
 			});
 		},
-		[editor.command, editor.timeline, mediaAssets, tracks],
+		[editor.command, timeline, mediaAssets, tracks],
 	);
 
 	const executeEffectDrop = useCallback(
@@ -349,7 +351,7 @@ export function useTimelineDragDrop({
 			dragData: EffectDragData;
 		}) => {
 			if (target.targetElement) {
-				editor.timeline.addClipEffect({
+				timeline.addClipEffect({
 					trackId: target.targetElement.trackId,
 					elementId: target.targetElement.elementId,
 					effectType: dragData.effectType,
@@ -386,12 +388,12 @@ export function useTimelineDragDrop({
 				startTime: target.xPosition,
 			});
 
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				placement: { mode: "explicit", trackId },
 				element,
 			});
 		},
-		[editor.command, editor.timeline, tracks],
+		[editor.command, timeline, tracks],
 	);
 
 	const executeTransitionDrop = useCallback(
@@ -457,12 +459,12 @@ export function useTimelineDragDrop({
 						t.elementBId === bestMatch!.elementBId,
 				);
 				if (existingTransition) {
-					editor.timeline.removeTransition({
+					timeline.removeTransition({
 						trackId: bestMatch.trackId,
 						transitionId: existingTransition.id,
 					});
 				}
-				editor.timeline.addTransition({
+				timeline.addTransition({
 					trackId: bestMatch.trackId,
 					elementAId: bestMatch.elementAId,
 					elementBId: bestMatch.elementBId,
@@ -473,7 +475,7 @@ export function useTimelineDragDrop({
 				toast.info("Drop on a clip boundary to add a transition");
 			}
 		},
-		[containerRef, tracksScrollRef, tracks, zoomLevel, editor.timeline],
+		[containerRef, tracksScrollRef, tracks, zoomLevel, timeline],
 	);
 
 	const executeFileDrop = useCallback(
@@ -494,7 +496,7 @@ export function useTimelineDragDrop({
 			for (const asset of processedAssets) {
 				const duration =
 					asset.duration ?? TIMELINE_CONSTANTS.DEFAULT_ELEMENT_DURATION;
-				const currentTracks = editor.timeline.getTracks();
+				const currentTracks = timeline.getTracks();
 				const dropTarget = computeDropTarget({
 					elementType: asset.type,
 					mouseX,
@@ -549,7 +551,7 @@ export function useTimelineDragDrop({
 				editor.command.execute({ command: batchCmd });
 			}
 		},
-		[activeProject, editor.command, editor.timeline, currentTime, zoomLevel],
+		[activeProject, editor.command, timeline, currentTime, zoomLevel],
 	);
 
 	const handleDrop = useCallback(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useBeatSync } from "@/hooks/use-beat-sync";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,16 +53,16 @@ export function BeatSyncButton() {
 }
 
 function BeatSyncPopoverContent({ onClose }: { onClose: () => void }) {
-	const editor = useEditor();
+	const { scenes, media } = useManagers("scenes", "media");
 	const { status, result, error, analyze, applyBeats, clearBeats, reset } =
 		useBeatSync();
 	const [sensitivity, setSensitivity] = useState(0.5);
 
 	const findAudioBlob = useCallback((): File | null => {
-		const activeScene = editor.scenes.getActiveScene();
+		const activeScene = scenes.getActiveScene();
 		if (!activeScene) return null;
 
-		const mediaAssets = editor.media.getAssets();
+		const mediaAssets = media.getAssets();
 
 		// Search tracks for first audio or video element with a mediaId
 		for (const track of activeScene.tracks) {
@@ -80,7 +80,7 @@ function BeatSyncPopoverContent({ onClose }: { onClose: () => void }) {
 		}
 
 		return null;
-	}, [editor]);
+	}, [scenes, media]);
 
 	const handleAnalyze = useCallback(async () => {
 		const audioFile = findAudioBlob();

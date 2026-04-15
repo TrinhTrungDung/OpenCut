@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FPS_PRESETS } from "@/constants/project-constants";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import { useEditorStore } from "@/stores/editor-store";
 import { useAIStore } from "@/stores/ai-store";
 import { geminiService } from "@/services/ai/gemini-service";
@@ -92,8 +92,8 @@ export function SettingsView() {
 }
 
 function ProjectInfoContent() {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const project = useProject();
+	const activeProject = project.getActive();
 	const { canvasPresets } = useEditorStore();
 
 	const currentCanvasSize = activeProject.settings.canvasSize;
@@ -109,7 +109,7 @@ function ProjectInfoContent() {
 	const handleAspectRatioChange = ({ value }: { value: string }) => {
 		if (value === ORIGINAL_PRESET_VALUE) {
 			const canvasSize = originalCanvasSize ?? currentCanvasSize;
-			editor.project.updateSettings({
+			project.updateSettings({
 				settings: { canvasSize },
 			});
 			return;
@@ -117,13 +117,13 @@ function ProjectInfoContent() {
 		const index = parseInt(value, 10);
 		const preset = canvasPresets[index];
 		if (preset) {
-			editor.project.updateSettings({ settings: { canvasSize: preset } });
+			project.updateSettings({ settings: { canvasSize: preset } });
 		}
 	};
 
 	const handleFpsChange = ({ value }: { value: string }) => {
 		const fps = parseFloat(value);
-		editor.project.updateSettings({ settings: { fps } });
+		project.updateSettings({ settings: { fps } });
 	};
 
 	return (

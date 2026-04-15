@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useScenesManager } from "@/hooks/editor";
 import { useBeatSyncStore } from "@/stores/beat-sync-store";
 import { analyzeBeatSync, generateBeatMarkers } from "@/lib/beat-sync";
 import { updateSceneInArray } from "@/lib/scenes";
@@ -9,7 +9,7 @@ import type { BeatDetectionOptions } from "@/types/beat-sync";
  * Orchestrates beat detection and applying beat markers as bookmarks.
  */
 export function useBeatSync() {
-	const editor = useEditor();
+	const scenesManager = useScenesManager();
 	const status = useBeatSyncStore((s) => s.status);
 	const result = useBeatSyncStore((s) => s.result);
 	const error = useBeatSyncStore((s) => s.error);
@@ -42,11 +42,11 @@ export function useBeatSync() {
 		const currentResult = useBeatSyncStore.getState().result;
 		if (!currentResult) return;
 
-		const activeScene = editor.scenes.getActiveScene();
+		const activeScene = scenesManager.getActiveScene();
 		if (!activeScene) return;
 
 		const beatBookmarks = generateBeatMarkers({ beats: currentResult.beats });
-		const scenes = editor.scenes.getScenes();
+		const scenes = scenesManager.getScenes();
 
 		// Merge beat bookmarks with existing bookmarks, avoiding duplicates
 		const existingTimes = new Set(
@@ -65,18 +65,18 @@ export function useBeatSync() {
 			updates: { bookmarks: mergedBookmarks },
 		});
 
-		editor.scenes.setScenes({ scenes: updatedScenes });
-	}, [editor]);
+		scenesManager.setScenes({ scenes: updatedScenes });
+	}, [scenesManager]);
 
 	const clearBeats = useCallback(() => {
-		const activeScene = editor.scenes.getActiveScene();
+		const activeScene = scenesManager.getActiveScene();
 		if (!activeScene) return;
 
 		// Remove bookmarks that were created by beat sync (identified by note === "Beat")
 		const filteredBookmarks = activeScene.bookmarks.filter(
 			(b) => b.note !== "Beat",
 		);
-		const scenes = editor.scenes.getScenes();
+		const scenes = scenesManager.getScenes();
 
 		const updatedScenes = updateSceneInArray({
 			scenes,
@@ -84,8 +84,8 @@ export function useBeatSync() {
 			updates: { bookmarks: filteredBookmarks },
 		});
 
-		editor.scenes.setScenes({ scenes: updatedScenes });
-	}, [editor]);
+		scenesManager.setScenes({ scenes: updatedScenes });
+	}, [scenesManager]);
 
 	const reset = useCallback(() => {
 		useBeatSyncStore.getState().reset();

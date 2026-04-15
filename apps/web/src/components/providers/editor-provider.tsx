@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import {
 	useKeybindingsListener,
 	useKeybindingDisabler,
@@ -12,6 +13,7 @@ import { useEditorActions } from "@/hooks/actions/use-editor-actions";
 import { useAIActions } from "@/hooks/actions/use-ai-actions";
 import { useCreatorActions } from "@/hooks/actions/use-creator-actions";
 import { prefetchFontAtlas } from "@/lib/fonts/google-fonts";
+import { initGPUDevice } from "@/services/renderer/gpu-device";
 import { SmartReframeDialog } from "@/components/editor/dialogs/smart-reframe-dialog";
 
 interface EditorProviderProps {
@@ -20,12 +22,12 @@ interface EditorProviderProps {
 }
 
 export function EditorProvider({ projectId, children }: EditorProviderProps) {
-	const editor = useEditor();
+	const project = useProject();
 	const router = useRouter();
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const { disableKeybindings, enableKeybindings } = useKeybindingDisabler();
-	const activeProject = editor.project.getActiveOrNull();
+	const activeProject = project.getActiveOrNull();
 
 	useEffect(() => {
 		if (isLoading) {
@@ -41,12 +43,14 @@ export function EditorProvider({ projectId, children }: EditorProviderProps) {
 		const loadProject = async () => {
 			try {
 				setIsLoading(true);
-				await editor.project.loadProject({ id: projectId });
+				await project.loadProject({ id: projectId });
 
 				if (cancelled) return;
 
 				setIsLoading(false);
 				prefetchFontAtlas();
+				// Fire-and-forget GPU device init for WebGPU effect rendering
+				initGPUDevice();
 			} catch (err) {
 				if (cancelled) return;
 
@@ -57,7 +61,7 @@ export function EditorProvider({ projectId, children }: EditorProviderProps) {
 
 				if (isNotFound) {
 					try {
-						const newProjectId = await editor.project.createNewProject({
+						const newProjectId = await project.createNewProject({
 							name: "Untitled Project",
 						});
 						router.replace(`/editor/${newProjectId}`);
@@ -79,7 +83,7 @@ export function EditorProvider({ projectId, children }: EditorProviderProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [projectId, editor, router]);
+	}, [projectId, project, router]);
 
 	if (error) {
 		return (
@@ -123,7 +127,7 @@ export function EditorProvider({ projectId, children }: EditorProviderProps) {
 }
 
 function EditorRuntimeBindings() {
-	const editor = useEditor();
+	const editor = useEditorCore();
 
 	useEffect(() => {
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {

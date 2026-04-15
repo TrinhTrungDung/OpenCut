@@ -8,7 +8,7 @@ import {
 	effectPreviewService,
 	onPreviewImageReady,
 } from "@/services/renderer/effect-preview";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { buildEffectElement } from "@/lib/timeline/element-utils";
 import type { EffectDefinition } from "@/types/effects";
 
@@ -57,20 +57,20 @@ function EffectPreviewCanvas({ effectType }: { effectType: string }) {
 }
 
 function EffectItem({ effect }: { effect: EffectDefinition }) {
-	const editor = useEditor();
+	const { playback, timeline } = useManagers("playback", "timeline");
 
 	const handleAddToTimeline = useCallback(() => {
-		const currentTime = editor.playback.getCurrentTime();
+		const currentTime = playback.getCurrentTime();
 		const element = buildEffectElement({
 			effectType: effect.type,
 			startTime: currentTime,
 		});
 
-		editor.timeline.insertElement({
+		timeline.insertElement({
 			placement: { mode: "auto", trackType: "effect" },
 			element,
 		});
-	}, [editor, effect.type]);
+	}, [playback, timeline, effect.type]);
 
 	const preview = <EffectPreviewCanvas effectType={effect.type} />;
 

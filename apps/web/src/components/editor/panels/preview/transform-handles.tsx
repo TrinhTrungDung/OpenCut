@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransformHandles } from "@/hooks/use-transform-handles";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import { isVisualElement } from "@/lib/timeline/element-utils";
 import { SnapGuides } from "./snap-guides";
 import { canvasToOverlay, getDisplayScale } from "@/lib/preview/preview-coords";
@@ -94,8 +94,8 @@ export function TransformHandles({
 		handlePointerUp,
 	} = useTransformHandles({ canvasRef });
 
-	const editor = useEditor();
-	const canvasSize = editor.project.getActive().settings.canvasSize;
+	const project = useProject();
+	const canvasSize = project.getActive().settings.canvasSize;
 
 	if (!hasVisualSelection || !selectedWithBounds) return null;
 

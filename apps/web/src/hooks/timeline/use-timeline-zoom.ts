@@ -8,7 +8,7 @@ import {
 	useState,
 } from "react";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { zoomToSlider } from "@/lib/timeline/zoom-utils";
 
 interface UseTimelineZoomProps {
@@ -37,7 +37,7 @@ export function useTimelineZoom({
 	tracksScrollRef,
 	rulerScrollRef,
 }: UseTimelineZoomProps): UseTimelineZoomReturn {
-	const editor = useEditor();
+	const { playback, project } = useManagers("playback", "project");
 	const hasInitializedRef = useRef(false);
 	const hasRestoredPlayheadRef = useRef(false);
 	const scrollSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -141,7 +141,7 @@ export function useTimelineZoom({
 		}
 
 		const currentScrollLeft = preZoomScrollLeftRef.current;
-		const playheadTime = editor.playback.getCurrentTime();
+		const playheadTime = playback.getCurrentTime();
 		const sliderPercent = zoomToSlider({ zoomLevel, minZoom });
 		const previousSliderPercent = zoomToSlider({
 			zoomLevel: previousZoom,
@@ -191,14 +191,14 @@ export function useTimelineZoom({
 
 		previousZoomRef.current = zoomLevel;
 
-		editor.project.setTimelineViewState({
+		project.setTimelineViewState({
 			viewState: {
 				zoomLevel,
 				scrollLeft: scrollElement.scrollLeft,
 				playheadTime,
 			},
 		});
-	}, [zoomLevel, editor, tracksScrollRef, rulerScrollRef, minZoom]);
+	}, [zoomLevel, playback, project, tracksScrollRef, rulerScrollRef, minZoom]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: tracksScrollRef is a stable ref
 	const saveScrollPosition = useCallback(() => {
@@ -208,16 +208,16 @@ export function useTimelineZoom({
 		scrollSaveTimeoutRef.current = setTimeout(() => {
 			const scrollElement = tracksScrollRef.current;
 			if (scrollElement) {
-				editor.project.setTimelineViewState({
+				project.setTimelineViewState({
 					viewState: {
 						zoomLevel,
 						scrollLeft: scrollElement.scrollLeft,
-						playheadTime: editor.playback.getCurrentTime(),
+						playheadTime: playback.getCurrentTime(),
 					},
 				});
 			}
 		}, 300);
-	}, [zoomLevel, editor]);
+	}, [zoomLevel, playback, project]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refs are stable
 	useEffect(() => {
@@ -251,9 +251,9 @@ export function useTimelineZoom({
 	useEffect(() => {
 		if (initialPlayheadTime !== undefined && !hasRestoredPlayheadRef.current) {
 			hasRestoredPlayheadRef.current = true;
-			editor.playback.seek({ time: initialPlayheadTime });
+			playback.seek({ time: initialPlayheadTime });
 		}
-	}, [initialPlayheadTime, editor]);
+	}, [initialPlayheadTime, playback]);
 
 	// prevent browser zoom in the timeline
 	useEffect(() => {

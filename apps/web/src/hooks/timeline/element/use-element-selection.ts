@@ -1,31 +1,36 @@
-import { useCallback, useSyncExternalStore } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useSelectionManager } from "@/hooks/editor";
 
 type ElementRef = { trackId: string; elementId: string };
 
 export function useElementSelection() {
-	const editor = useEditor();
+	const selection = useSelectionManager();
 	const selectedElements = useSyncExternalStore(
-		(listener) => editor.selection.subscribe(listener),
-		() => editor.selection.getSelectedElements(),
+		(listener) => selection.subscribe(listener),
+		() => selection.getSelectedElements(),
 	);
 
-	const isElementSelected = useCallback(
-		({ trackId, elementId }: ElementRef) =>
-			selectedElements.some(
-				(element) =>
-					element.trackId === trackId && element.elementId === elementId,
+	const selectedSet = useMemo(
+		() =>
+			new Set(
+				selectedElements.map((e) => `${e.trackId}:${e.elementId}`),
 			),
 		[selectedElements],
 	);
 
+	const isElementSelected = useCallback(
+		({ trackId, elementId }: ElementRef) =>
+			selectedSet.has(`${trackId}:${elementId}`),
+		[selectedSet],
+	);
+
 	const selectElement = useCallback(
 		({ trackId, elementId }: ElementRef) => {
-			editor.selection.setSelectedElements({
+			selection.setSelectedElements({
 				elements: [{ trackId, elementId }],
 			});
 		},
-		[editor],
+		[selection],
 	);
 
 	const addElementToSelection = useCallback(
@@ -36,23 +41,23 @@ export function useElementSelection() {
 			);
 			if (alreadySelected) return;
 
-			editor.selection.setSelectedElements({
+			selection.setSelectedElements({
 				elements: [...selectedElements, { trackId, elementId }],
 			});
 		},
-		[selectedElements, editor],
+		[selectedElements, selection],
 	);
 
 	const removeElementFromSelection = useCallback(
 		({ trackId, elementId }: ElementRef) => {
-			editor.selection.setSelectedElements({
+			selection.setSelectedElements({
 				elements: selectedElements.filter(
 					(element) =>
 						!(element.trackId === trackId && element.elementId === elementId),
 				),
 			});
 		},
-		[selectedElements, editor],
+		[selectedElements, selection],
 	);
 
 	const toggleElementSelection = useCallback(
@@ -72,14 +77,14 @@ export function useElementSelection() {
 	);
 
 	const clearElementSelection = useCallback(() => {
-		editor.selection.clearSelection();
-	}, [editor]);
+		selection.clearSelection();
+	}, [selection]);
 
 	const setElementSelection = useCallback(
 		({ elements }: { elements: ElementRef[] }) => {
-			editor.selection.setSelectedElements({ elements });
+			selection.setSelectedElements({ elements });
 		},
-		[editor],
+		[selection],
 	);
 
 	/**

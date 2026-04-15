@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { TextElement } from "@/types/timeline";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { cn } from "@/utils/ui";
 import {
 	ENTRANCE_PRESETS,
@@ -19,7 +19,7 @@ export function TextAnimationTab({
 	element: TextElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 
 	/* Track which presets are currently selected */
 	const [selectedEntrance, setSelectedEntrance] =
@@ -48,7 +48,7 @@ export function TextAnimationTab({
 				duration: element.duration,
 			});
 
-			editor.timeline.updateElements({
+			timeline.updateElements({
 				updates: [
 					{
 						trackId,
@@ -58,7 +58,7 @@ export function TextAnimationTab({
 				],
 			});
 		},
-		[editor, trackId, element.id, element.duration],
+		[timeline, trackId, element.id, element.duration],
 	);
 
 	const handleSelectEntrance = useCallback(
@@ -89,7 +89,7 @@ export function TextAnimationTab({
 		setSelectedEntrance(null);
 		setSelectedExit(null);
 		setSelectedLoop(null);
-		editor.timeline.updateElements({
+		timeline.updateElements({
 			updates: [
 				{
 					trackId,
@@ -98,7 +98,7 @@ export function TextAnimationTab({
 				},
 			],
 		});
-	}, [editor, trackId, element.id]);
+	}, [timeline, trackId, element.id]);
 
 	const hasAnyAnimation = selectedEntrance || selectedExit || selectedLoop;
 

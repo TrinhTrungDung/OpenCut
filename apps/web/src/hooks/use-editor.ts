@@ -1,6 +1,14 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { EditorCore } from "@/core";
 
+/**
+ * @deprecated Use granular hooks from `@/hooks/editor` instead:
+ * - Single manager: `usePlayback()`, `useTimeline()`, `useProject()`, etc.
+ * - Multiple managers: `useManagers("playback", "timeline")`
+ * - No subscription: `useEditorCore()` from `@/hooks/use-editor-core`
+ *
+ * This hook subscribes to ALL 7 managers, causing unnecessary re-renders.
+ */
 export function useEditor(): EditorCore {
 	const editor = useMemo(() => EditorCore.getInstance(), []);
 	const versionRef = useRef(0);

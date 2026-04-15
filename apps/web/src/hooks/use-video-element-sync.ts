@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { videoElementPool } from "@/services/video-element-pool";
 
 /**
@@ -9,15 +9,15 @@ import { videoElementPool } from "@/services/video-element-pool";
  * during playback, so seekIfNeeded can seek to the scrubbed position.
  */
 export function useVideoElementSync() {
-	const editor = useEditor();
+	const { playback, timeline, media } = useManagers("playback", "timeline", "media");
 
 	useEffect(() => {
 		let wasPlaying = false;
 		let wasScrubbing = false;
 
-		const unsubscribe = editor.playback.subscribe(() => {
-			const isPlaying = editor.playback.getIsPlaying();
-			const isScrubbing = editor.playback.getIsScrubbing();
+		const unsubscribe = playback.subscribe(() => {
+			const isPlaying = playback.getIsPlaying();
+			const isScrubbing = playback.getIsScrubbing();
 
 			if (isPlaying && !wasPlaying && !isScrubbing) {
 				startVideoElements();
@@ -42,10 +42,10 @@ export function useVideoElementSync() {
 		// No pre-play — just start at the exact moment a clip enters range.
 		// The element is already buffered (preload="auto", pre-seeked to
 		// trimStart in startVideoElements), so play() starts near-instantly.
-		const unsubscribeTime = editor.playback.subscribeToTime((time) => {
-			if (!editor.playback.getIsPlaying() || editor.playback.getIsScrubbing()) return;
+		const unsubscribeTime = playback.subscribeToTime((time) => {
+			if (!playback.getIsPlaying() || playback.getIsScrubbing()) return;
 
-			const tracks = editor.timeline.getTracks();
+			const tracks = timeline.getTracks();
 
 			for (const track of tracks) {
 				for (const element of track.elements) {
@@ -73,8 +73,8 @@ export function useVideoElementSync() {
 
 		/** Re-sync playing video elements to the current scrubbed position */
 		function resyncVideoElements() {
-			const currentTime = editor.playback.getCurrentTime();
-			const tracks = editor.timeline.getTracks();
+			const currentTime = playback.getCurrentTime();
+			const tracks = timeline.getTracks();
 
 			for (const track of tracks) {
 				for (const element of track.elements) {
@@ -101,9 +101,9 @@ export function useVideoElementSync() {
 		}
 
 		function startVideoElements() {
-			const currentTime = editor.playback.getCurrentTime();
-			const tracks = editor.timeline.getTracks();
-			const mediaAssets = editor.media.getAssets();
+			const currentTime = playback.getCurrentTime();
+			const tracks = timeline.getTracks();
+			const mediaAssets = media.getAssets();
 			const mediaMap = new Map(mediaAssets.map((m) => [m.id, m]));
 
 			for (const track of tracks) {
@@ -145,5 +145,5 @@ export function useVideoElementSync() {
 			unsubscribeTime();
 			videoElementPool.pauseAll();
 		};
-	}, [editor]);
+	}, [playback, timeline, media]);
 }

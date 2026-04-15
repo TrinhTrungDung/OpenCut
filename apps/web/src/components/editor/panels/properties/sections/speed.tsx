@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { clamp } from "@/utils/math";
 import { NumberField } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ export function SpeedSection({
 	element: SpeedElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const speed = element.speed ?? DEFAULT_SPEED;
 	const isScrubbing = useRef(false);
 	const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,7 +83,7 @@ export function SpeedSection({
 	/** Commit speed change (presets, text input, reset) */
 	const updateSpeed = (newSpeed: number) => {
 		const updates = buildSpeedUpdates(newSpeed);
-		editor.timeline.updateElements({
+		timeline.updateElements({
 			updates: [{ trackId, elementId: element.id, updates }],
 		});
 	};
@@ -105,10 +105,10 @@ export function SpeedSection({
 		if (pendingScrubValue.current === null) return;
 		const updates = buildSpeedUpdates(pendingScrubValue.current);
 		pendingScrubValue.current = null;
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [{ trackId, elementId: element.id, updates }],
 		});
-	}, [buildSpeedUpdates, editor, trackId, element.id]);
+	}, [buildSpeedUpdates, timeline, trackId, element.id]);
 
 	const handleScrub = (value: number) => {
 		isScrubbing.current = true;
@@ -134,12 +134,12 @@ export function SpeedSection({
 				flushScrub();
 			}
 			isScrubbing.current = false;
-			editor.timeline.commitPreview();
+			timeline.commitPreview();
 		}
-	}, [editor, flushScrub]);
+	}, [timeline, flushScrub]);
 
 	const handleCurveChange = (points: SpeedCurvePoint[]) => {
-		editor.timeline.updateElements({
+		timeline.updateElements({
 			updates: [
 				{
 					trackId,
@@ -156,7 +156,7 @@ export function SpeedSection({
 		if (next) {
 			handleCurveChange(element.speedCurve ?? DEFAULT_CURVE_POINTS);
 		} else {
-			editor.timeline.updateElements({
+			timeline.updateElements({
 				updates: [
 					{
 						trackId,

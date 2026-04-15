@@ -7,7 +7,7 @@ import {
 	timelineTimeToSnappedPixels,
 } from "@/lib/timeline";
 import { useTimelinePlayhead } from "@/hooks/timeline/use-timeline-playhead";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 
 interface TimelinePlayheadProps {
 	zoomLevel: number;
@@ -28,8 +28,8 @@ export function TimelinePlayhead({
 	playheadRef: externalPlayheadRef,
 	isSnappingToPlayhead = false,
 }: TimelinePlayheadProps) {
-	const editor = useEditor();
-	const duration = editor.timeline.getTotalDuration();
+	const { playback, timeline, project } = useManagers("playback", "timeline", "project");
+	const duration = timeline.getTotalDuration();
 	const internalPlayheadRef = useRef<HTMLDivElement>(null);
 	const playheadRef = externalPlayheadRef || internalPlayheadRef;
 
@@ -54,7 +54,7 @@ export function TimelinePlayhead({
 	const leftPosition = getCenteredLineLeft({ centerPixel: centerPosition });
 
 	// RAF-based DOM update during playback — bypasses React re-renders
-	const isPlaying = editor.playback.getIsPlaying();
+	const isPlaying = playback.getIsPlaying();
 	useEffect(() => {
 		if (!isPlaying) return;
 
@@ -62,7 +62,7 @@ export function TimelinePlayhead({
 		const update = () => {
 			const el = playheadRef.current;
 			if (!el) return;
-			const time = editor.playback.getCurrentTime();
+			const time = playback.getCurrentTime();
 			const center = timelineTimeToSnappedPixels({ time, zoomLevel });
 			const left = getCenteredLineLeft({ centerPixel: center });
 			el.style.left = `${left}px`;
@@ -90,7 +90,7 @@ export function TimelinePlayhead({
 		};
 		raf = requestAnimationFrame(update);
 		return () => cancelAnimationFrame(raf);
-	}, [isPlaying, zoomLevel, editor.playback, playheadRef, rulerScrollRef, tracksScrollRef]);
+	}, [isPlaying, zoomLevel, playback, playheadRef, rulerScrollRef, tracksScrollRef]);
 
 	const handlePlayheadKeyDown = (
 		event: React.KeyboardEvent<HTMLDivElement>,
@@ -98,14 +98,14 @@ export function TimelinePlayhead({
 		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 
 		event.preventDefault();
-		const step = 1 / Math.max(1, editor.project.getActive().settings.fps);
+		const step = 1 / Math.max(1, project.getActive().settings.fps);
 		const direction = event.key === "ArrowRight" ? 1 : -1;
 		const nextTime = Math.max(
 			0,
 			Math.min(duration, playheadPosition + direction * step),
 		);
 
-		editor.playback.seek({ time: nextTime });
+		playback.seek({ time: nextTime });
 	};
 
 	return (

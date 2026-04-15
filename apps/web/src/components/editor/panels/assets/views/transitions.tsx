@@ -7,7 +7,7 @@ import { getAllTransitions } from "@/lib/transitions";
 import type { TransitionDefinition, TransitionType } from "@/types/transitions";
 import type { VideoTrack } from "@/types/timeline";
 import { cn } from "@/utils/ui";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
 import { toast } from "sonner";
 import { setDragData } from "@/lib/drag-data";
@@ -72,7 +72,7 @@ export function TransitionsView() {
 function TransitionsGrid({
 	transitions,
 }: { transitions: TransitionDefinition[] }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const { selectedElements } = useElementSelection();
 
 	const handleApplyTransition = useCallback(
@@ -84,7 +84,7 @@ function TransitionsGrid({
 
 			// Use the first selected element to find its track and adjacent elements
 			const firstSelected = selectedElements[0];
-			const track = editor.timeline.getTrackById({
+			const track = timeline.getTrackById({
 				trackId: firstSelected.trackId,
 			});
 			if (!track || track.type !== "video") {
@@ -115,7 +115,7 @@ function TransitionsGrid({
 							t.elementBId === elementB.id,
 					);
 					if (!existing) {
-						editor.timeline.addTransition({
+						timeline.addTransition({
 							trackId: track.id,
 							elementAId: elementA.id,
 							elementBId: elementB.id,
@@ -139,7 +139,7 @@ function TransitionsGrid({
 							t.elementBId === elementB.id,
 					);
 					if (!existing) {
-						editor.timeline.addTransition({
+						timeline.addTransition({
 							trackId: track.id,
 							elementAId: elementA.id,
 							elementBId: elementB.id,
@@ -157,7 +157,7 @@ function TransitionsGrid({
 				);
 			}
 		},
-		[editor, selectedElements],
+		[timeline, selectedElements],
 	);
 
 	return (

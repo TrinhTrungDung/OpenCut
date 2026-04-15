@@ -1,4 +1,4 @@
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import {
 	getKeyframeAtTime,
 	hasKeyframesForPath,
@@ -26,7 +26,7 @@ export function useKeyframedColorProperty({
 	resolvedColor: string;
 	buildBaseUpdates: ({ value }: { value: string }) => Partial<TimelineElement>;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 
 	const hasAnimatedKeyframes = hasKeyframesForPath({ animations, propertyPath });
 	const keyframeAtTime = isPlayheadWithinElementRange
@@ -39,7 +39,7 @@ export function useKeyframedColorProperty({
 
 	const onChange = ({ color }: { color: string }) => {
 		if (shouldUseAnimatedChannel) {
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{
 						trackId,
@@ -58,12 +58,12 @@ export function useKeyframedColorProperty({
 			return;
 		}
 
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [{ trackId, elementId, updates: buildBaseUpdates({ value: color }) }],
 		});
 	};
 
-	const onChangeEnd = () => editor.timeline.commitPreview();
+	const onChangeEnd = () => timeline.commitPreview();
 
 	const toggleKeyframe = () => {
 		if (!isPlayheadWithinElementRange) {
@@ -71,13 +71,13 @@ export function useKeyframedColorProperty({
 		}
 
 		if (keyframeIdAtTime) {
-			editor.timeline.removeKeyframes({
+			timeline.removeKeyframes({
 				keyframes: [{ trackId, elementId, propertyPath, keyframeId: keyframeIdAtTime }],
 			});
 			return;
 		}
 
-		editor.timeline.upsertKeyframes({
+		timeline.upsertKeyframes({
 			keyframes: [
 				{ trackId, elementId, propertyPath, time: localTime, value: resolvedColor },
 			],

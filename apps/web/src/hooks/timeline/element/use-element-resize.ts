@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
 import { snapTimeToFrame } from "@/lib/time";
 import type { TimelineElement, TimelineTrack } from "@/types/timeline";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useShiftKey } from "@/hooks/use-shift-key";
 import {
 	findSnapPoints,
@@ -36,8 +36,8 @@ export function useTimelineElementResize({
 	onSnapPointChange,
 	onResizeStateChange,
 }: UseTimelineElementResizeProps) {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const { playback, timeline, project } = useManagers("playback", "timeline", "project");
+	const activeProject = project.getActive();
 	const isShiftHeldRef = useShiftKey();
 	const snappingEnabled = useTimelineStore((state) => state.snappingEnabled);
 	const rippleEditingEnabled = useTimelineStore(
@@ -104,8 +104,8 @@ export function useTimelineElementResize({
 			const minDurationSeconds = 1 / projectFps;
 			const shouldSnap = snappingEnabled && !isShiftHeldRef.current;
 			if (shouldSnap) {
-				const tracks = editor.timeline.getTracks();
-				const playheadTime = editor.playback.getCurrentTime();
+				const tracks = timeline.getTracks();
+				const playheadTime = playback.getCurrentTime();
 				const snapPoints = findSnapPoints({
 					tracks,
 					playheadTime,
@@ -139,14 +139,20 @@ export function useTimelineElementResize({
 			}
 			onSnapPointChange?.(resizeSnapPoint);
 
-			const otherElements = track.elements.filter(({ id }) => id !== element.id);
-			const initialEndTime = resizing.initialStartTime + resizing.initialDuration;
+			const otherElements = track.elements.filter(
+				({ id }) => id !== element.id,
+			);
+			const initialEndTime =
+				resizing.initialStartTime + resizing.initialDuration;
 
 			const rightNeighborBound =
 				resizing.side === "right"
 					? otherElements
 							.filter(({ startTime }) => startTime >= initialEndTime)
-							.reduce((min, { startTime }) => Math.min(min, startTime), Infinity)
+							.reduce(
+								(min, { startTime }) => Math.min(min, startTime),
+								Infinity,
+							)
 					: Infinity;
 
 			const leftNeighborBound =
@@ -268,7 +274,10 @@ export function useTimelineElementResize({
 						const baseDuration =
 							resizing.initialDuration + resizing.initialTrimEnd;
 						const newDuration = snapTimeToFrame({
-							time: Math.min(baseDuration + extensionNeeded, maxAllowedDuration),
+							time: Math.min(
+								baseDuration + extensionNeeded,
+								maxAllowedDuration,
+							),
 							fps: projectFps,
 						});
 
@@ -328,7 +337,8 @@ export function useTimelineElementResize({
 			zoomLevel,
 			activeProject.settings.fps,
 			snappingEnabled,
-			editor,
+			playback,
+			timeline,
 			element.id,
 			track.elements,
 			onSnapPointChange,
@@ -349,8 +359,13 @@ export function useTimelineElementResize({
 		const startTimeChanged = finalStartTime !== resizing.initialStartTime;
 		const durationChanged = finalDuration !== resizing.initialDuration;
 
-		if (trimStartChanged || trimEndChanged || startTimeChanged || durationChanged) {
-			editor.timeline.updateElementTrim({
+		if (
+			trimStartChanged ||
+			trimEndChanged ||
+			startTimeChanged ||
+			durationChanged
+		) {
+			timeline.updateElementTrim({
 				elementId: element.id,
 				trimStart: finalTrimStart,
 				trimEnd: finalTrimEnd,
@@ -365,7 +380,7 @@ export function useTimelineElementResize({
 		onSnapPointChange?.(null);
 	}, [
 		resizing,
-		editor.timeline,
+		timeline,
 		element.id,
 		onResizeStateChange,
 		onSnapPointChange,
@@ -375,11 +390,22 @@ export function useTimelineElementResize({
 	useEffect(() => {
 		if (!resizing) return;
 
+		let rafId: number | null = null;
+
 		const handleDocumentMouseMove = ({ clientX }: MouseEvent) => {
-			updateTrimFromMouseMove({ clientX });
+			// RAF-throttle resize: process at most once per animation frame
+			if (rafId !== null) return;
+			rafId = requestAnimationFrame(() => {
+				rafId = null;
+				updateTrimFromMouseMove({ clientX });
+			});
 		};
 
 		const handleDocumentMouseUp = () => {
+			if (rafId !== null) {
+				cancelAnimationFrame(rafId);
+				rafId = null;
+			}
 			handleResizeEnd();
 		};
 
@@ -389,6 +415,9 @@ export function useTimelineElementResize({
 		return () => {
 			document.removeEventListener("mousemove", handleDocumentMouseMove);
 			document.removeEventListener("mouseup", handleDocumentMouseUp);
+			if (rafId !== null) {
+				cancelAnimationFrame(rafId);
+			}
 		};
 	}, [resizing, handleResizeEnd, updateTrimFromMouseMove]);
 

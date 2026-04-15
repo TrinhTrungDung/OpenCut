@@ -1,7 +1,8 @@
 "use client";
 
 import { memo, useEffect, useRef, useState } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import { formatTimeCode } from "@/lib/time";
 import { invokeAction } from "@/lib/actions";
 import { EditableTimecode } from "@/components/editable-timecode";
@@ -32,14 +33,12 @@ const LiveTimecode = memo(function LiveTimecode({
 	fps: number;
 	totalDuration: number;
 }) {
-	const editor = useEditor();
+	const editor = useEditorCore();
 	const [time, setTime] = useState(editor.playback.getCurrentTime());
 	const lastUpdateRef = useRef(0);
 
 	useEffect(() => {
-		// Subscribe to lightweight time updates (no full React re-render storm)
 		return editor.playback.subscribeToTime((t) => {
-			// Throttle display updates to ~15Hz — timecode doesn't need 60fps
 			const now = performance.now();
 			if (now - lastUpdateRef.current >= 66) {
 				lastUpdateRef.current = now;
@@ -48,7 +47,6 @@ const LiveTimecode = memo(function LiveTimecode({
 		});
 	}, [editor.playback]);
 
-	// Also sync on seek/play/pause via regular subscription
 	useEffect(() => {
 		return editor.playback.subscribe(() => {
 			setTime(editor.playback.getCurrentTime());
@@ -74,11 +72,11 @@ export function PreviewToolbar({
 	isFullscreen: boolean;
 	onToggleFullscreen: () => void;
 }) {
-	const editor = useEditor();
-	const isPlaying = editor.playback.getIsPlaying();
-	const isBuffering = editor.playback.getIsBuffering();
-	const totalDuration = editor.timeline.getTotalDuration();
-	const fps = editor.project.getActive().settings.fps;
+	const { playback, timeline, project } = useManagers("playback", "timeline", "project");
+	const isPlaying = playback.getIsPlaying();
+	const isBuffering = playback.getIsBuffering();
+	const totalDuration = timeline.getTotalDuration();
+	const fps = project.getActive().settings.fps;
 
 	return (
 		<div className="grid grid-cols-[1fr_auto_1fr] items-center pb-3 pt-5 px-5">
@@ -110,7 +108,7 @@ export function PreviewToolbar({
 				<Select
 					value={fps.toString()}
 					onValueChange={(value) =>
-						editor.project.updateSettings({
+						project.updateSettings({
 							settings: { fps: parseFloat(value) },
 						})
 					}

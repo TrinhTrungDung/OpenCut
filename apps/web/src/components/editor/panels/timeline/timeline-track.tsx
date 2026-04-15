@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, memo } from "react";
 import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
 import { TimelineElement } from "./timeline-element";
 import { TransitionOverlay } from "./transition-overlay";
@@ -10,14 +10,13 @@ import type { TransitionType } from "@/types/transitions";
 import type { SnapPoint } from "@/lib/timeline/snap-utils";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
 import { useEdgeAutoScroll } from "@/hooks/timeline/use-edge-auto-scroll";
-import type { ElementDragState } from "@/types/timeline";
-import { useEditor } from "@/hooks/use-editor";
+import { useDragStore } from "@/stores/drag-store";
+import { useTimeline } from "@/hooks/editor";
 import { getTrackHeight, timelineTimeToSnappedPixels } from "@/lib/timeline";
 
 interface TimelineTrackContentProps {
 	track: TimelineTrack;
 	zoomLevel: number;
-	dragState: ElementDragState;
 	rulerScrollRef: React.RefObject<HTMLDivElement | null>;
 	tracksScrollRef: React.RefObject<HTMLDivElement | null>;
 	lastMouseXRef: React.RefObject<number>;
@@ -39,10 +38,9 @@ interface TimelineTrackContentProps {
 	targetElementId?: string | null;
 }
 
-export function TimelineTrackContent({
+export const TimelineTrackContent = memo(function TimelineTrackContent({
 	track,
 	zoomLevel,
-	dragState,
 	rulerScrollRef,
 	tracksScrollRef,
 	lastMouseXRef,
@@ -55,13 +53,14 @@ export function TimelineTrackContent({
 	shouldIgnoreClick,
 	targetElementId = null,
 }: TimelineTrackContentProps) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const { isElementSelected } = useElementSelection();
 
-	const duration = editor.timeline.getTotalDuration();
+	const duration = timeline.getTotalDuration();
+	const isDragging = useDragStore((s) => s.dragState.isDragging);
 
 	useEdgeAutoScroll({
-		isActive: dragState.isDragging,
+		isActive: isDragging,
 		getMouseClientX: () => lastMouseXRef.current ?? 0,
 		rulerScrollRef,
 		tracksScrollRef,
@@ -69,43 +68,65 @@ export function TimelineTrackContent({
 	});
 
 	const transitions =
-		track.type === "video"
-			? (track as VideoTrack).transitions ?? []
-			: [];
+		track.type === "video" ? ((track as VideoTrack).transitions ?? []) : [];
 
 	const trackHeight = getTrackHeight({ type: track.type });
 	const pixelsPerSecond = TIMELINE_CONSTANTS.PIXELS_PER_SECOND;
 
 	const handleTransitionDurationChange = useCallback(
-		({ transitionId, newDuration }: { transitionId: string; newDuration: number }) => {
-			editor.timeline.updateTransition({
+		({
+			transitionId,
+			newDuration,
+		}: {
+			transitionId: string;
+			newDuration: number;
+		}) => {
+			timeline.updateTransition({
 				trackId: track.id,
 				transitionId,
 				updates: { duration: newDuration },
 			});
 		},
-		[editor, track.id],
+		[timeline, track.id],
 	);
 
 	const handleTransitionRemove = useCallback(
 		({ transitionId }: { transitionId: string }) => {
-			editor.timeline.removeTransition({
+			timeline.removeTransition({
 				trackId: track.id,
 				transitionId,
 			});
 		},
-		[editor, track.id],
+		[timeline, track.id],
 	);
 
 	const handleTransitionChangeType = useCallback(
-		({ transitionId, newType }: { transitionId: string; newType: TransitionType }) => {
-			editor.timeline.updateTransition({
+		({
+			transitionId,
+			newType,
+		}: {
+			transitionId: string;
+			newType: TransitionType;
+		}) => {
+			timeline.updateTransition({
 				trackId: track.id,
 				transitionId,
 				updates: { type: newType },
 			});
 		},
-		[editor, track.id],
+		[timeline, track.id],
+	);
+
+	const handleElementMouseDown = useCallback(
+		(event: React.MouseEvent, element: TimelineElementType) =>
+			onElementMouseDown({ event, element, track }),
+		[onElementMouseDown, track],
+	);
+
+	const handleElementClick = useCallback(
+		(event: React.MouseEvent, element: TimelineElementType) =>
+			onElementClick({ event, element, track }),
+		[onElementClick, track],
 	);
 
 	return (
@@ -141,13 +162,8 @@ export function TimelineTrackContent({
 									isSelected={isSelected}
 									onSnapPointChange={onSnapPointChange}
 									onResizeStateChange={onResizeStateChange}
-									onElementMouseDown={(event, element) =>
-										onElementMouseDown({ event, element, track })
-									}
-									onElementClick={(event, element) =>
-										onElementClick({ event, element, track })
-									}
-									dragState={dragState}
+									onElementMouseDown={handleElementMouseDown}
+									onElementClick={handleElementClick}
 									isDropTarget={element.id === targetElementId}
 								/>
 							);
@@ -158,10 +174,8 @@ export function TimelineTrackContent({
 							);
 							if (!elementA) return null;
 
-							const elementAEnd =
-								elementA.startTime + elementA.duration;
-							const transitionStart =
-								elementAEnd - transition.duration;
+							const elementAEnd = elementA.startTime + elementA.duration;
+							const transitionStart = elementAEnd - transition.duration;
 							const offsetPx = timelineTimeToSnappedPixels({
 								time: transitionStart,
 								zoomLevel,
@@ -200,4 +214,4 @@ export function TimelineTrackContent({
 			</div>
 		</button>
 	);
-}
+});

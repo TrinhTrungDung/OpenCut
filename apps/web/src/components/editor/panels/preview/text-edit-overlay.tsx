@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import type { TextElement } from "@/types/timeline";
 import {
 	positionToOverlay,
@@ -32,7 +32,7 @@ export function TextEditOverlay({
 	onCommit: () => void;
 	onCancel: () => void;
 }) {
-	const editor = useEditor();
+	const { timeline, project } = useManagers("timeline", "project");
 	const divRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -50,10 +50,10 @@ export function TextEditOverlay({
 		const div = divRef.current;
 		if (!div) return;
 		const text = div.innerText;
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [{ trackId, elementId, updates: { content: text } }],
 		});
-	}, [editor.timeline, trackId, elementId]);
+	}, [timeline, trackId, elementId]);
 
 	const handleKeyDown = useCallback(
 		({ event }: { event: React.KeyboardEvent }) => {
@@ -69,7 +69,7 @@ export function TextEditOverlay({
 
 	const canvasRect = canvasRef.current?.getBoundingClientRect();
 	const containerRect = containerRef.current?.getBoundingClientRect();
-	const canvasSize = editor.project.getActive().settings.canvasSize;
+	const canvasSize = project.getActive().settings.canvasSize;
 
 	if (!canvasRect || !containerRect || !canvasSize) return null;
 

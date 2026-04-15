@@ -15,7 +15,7 @@ import { ColorPicker } from "@/components/ui/color-picker";
 import { Button } from "@/components/ui/button";
 import { uppercase } from "@/utils/string";
 import { clamp } from "@/utils/math";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { DEFAULT_COLOR } from "@/constants/project-constants";
 import {
 	CORNER_RADIUS_MAX,
@@ -134,18 +134,18 @@ function ContentSection({
 	element: TextElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 
 	const content = usePropertyDraft({
 		displayValue: element.content,
 		parse: (input) => input,
 		onPreview: (value) =>
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{ trackId, elementId: element.id, updates: { content: value } },
 				],
 			}),
-		onCommit: () => editor.timeline.commitPreview(),
+		onCommit: () => timeline.commitPreview(),
 	});
 
 	return (
@@ -174,7 +174,7 @@ function TypographySection({
 	element: TextElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const { localTime, isPlayheadWithinElementRange } = useElementPlayhead({
 		startTime: element.startTime,
 		duration: element.duration,
@@ -205,12 +205,12 @@ function TypographySection({
 			return clamp({ value: parsed, min: MIN_FONT_SIZE, max: MAX_FONT_SIZE });
 		},
 		onPreview: (value) =>
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{ trackId, elementId: element.id, updates: { fontSize: value } },
 				],
 			}),
-		onCommit: () => editor.timeline.commitPreview(),
+		onCommit: () => timeline.commitPreview(),
 	});
 
 	return (
@@ -224,7 +224,7 @@ function TypographySection({
 						<FontPicker
 							defaultValue={element.fontFamily}
 							onValueChange={(value) =>
-								editor.timeline.updateElements({
+								timeline.updateElements({
 									updates: [
 										{
 											trackId,
@@ -247,7 +247,7 @@ function TypographySection({
 							onScrub={fontSize.scrubTo}
 							onScrubEnd={fontSize.commitScrub}
 							onReset={() =>
-								editor.timeline.updateElements({
+								timeline.updateElements({
 									updates: [
 										{
 											trackId,
@@ -293,7 +293,7 @@ function SpacingSection({
 	element: TextElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 
 	const letterSpacing = usePropertyDraft({
 		displayValue: Math.round(
@@ -304,12 +304,12 @@ function SpacingSection({
 			return Number.isNaN(parsed) ? null : Math.round(parsed);
 		},
 		onPreview: (value) =>
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{ trackId, elementId: element.id, updates: { letterSpacing: value } },
 				],
 			}),
-		onCommit: () => editor.timeline.commitPreview(),
+		onCommit: () => timeline.commitPreview(),
 	});
 
 	const lineHeight = usePropertyDraft({
@@ -321,12 +321,12 @@ function SpacingSection({
 				: Math.max(0.1, Math.round(parsed * 10) / 10);
 		},
 		onPreview: (value) =>
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{ trackId, elementId: element.id, updates: { lineHeight: value } },
 				],
 			}),
-		onCommit: () => editor.timeline.commitPreview(),
+		onCommit: () => timeline.commitPreview(),
 	});
 
 	return (
@@ -345,7 +345,7 @@ function SpacingSection({
 							onScrub={letterSpacing.scrubTo}
 							onScrubEnd={letterSpacing.commitScrub}
 							onReset={() =>
-								editor.timeline.updateElements({
+								timeline.updateElements({
 									updates: [
 										{
 											trackId,
@@ -371,7 +371,7 @@ function SpacingSection({
 							onScrub={lineHeight.scrubTo}
 							onScrubEnd={lineHeight.commitScrub}
 							onReset={() =>
-								editor.timeline.updateElements({
+								timeline.updateElements({
 									updates: [
 										{
 											trackId,
@@ -401,7 +401,7 @@ function BackgroundSection({
 	element: TextElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const lastSelectedColor = useRef(DEFAULT_COLOR);
 	const { localTime, isPlayheadWithinElementRange } = useElementPlayhead({
 		startTime: element.startTime,
@@ -557,7 +557,7 @@ function BackgroundSection({
 			enabled && element.background.color === "transparent"
 				? lastSelectedColor.current
 				: element.background.color;
-		editor.timeline.updateElements({
+		timeline.updateElements({
 			updates: [
 				{
 					trackId,

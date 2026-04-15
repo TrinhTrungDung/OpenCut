@@ -26,7 +26,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useRevealItem } from "@/hooks/use-reveal-item";
 import { processMediaAssets } from "@/lib/media/processing";
@@ -58,9 +58,9 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect, useRef } from "react";
 
 export function MediaView() {
-	const editor = useEditor();
-	const mediaFiles = editor.media.getAssets();
-	const activeProject = editor.project.getActive();
+	const { playback, timeline, project, media } = useManagers("playback", "timeline", "project", "media");
+	const mediaFiles = media.getAssets();
+	const activeProject = project.getActive();
 
 	const {
 		mediaViewMode,
@@ -100,7 +100,7 @@ export function MediaView() {
 					setProgress(progress.progress),
 			});
 			for (const asset of processedAssets) {
-				await editor.media.addMediaAsset({
+				await media.addMediaAsset({
 					projectId: activeProject.metadata.id,
 					asset,
 				});
@@ -135,7 +135,7 @@ export function MediaView() {
 			return;
 		}
 
-		await editor.media.removeMediaAsset({
+		await media.removeMediaAsset({
 			projectId: activeProject.metadata.id,
 			id,
 		});
@@ -373,7 +373,7 @@ function MediaAssetDraggable({
 	isRounded?: boolean;
 	onPreview?: ({ asset }: { asset: MediaAsset }) => void;
 }) {
-	const editor = useEditor();
+	const { timeline } = useManagers("timeline");
 
 	const addElementAtTime = ({
 		asset,
@@ -391,7 +391,7 @@ function MediaAssetDraggable({
 			duration,
 			startTime,
 		});
-		editor.timeline.insertElement({
+		timeline.insertElement({
 			element,
 			placement: { mode: "auto" },
 		});
@@ -451,7 +451,7 @@ function MediaItemWithContextMenu({
 	allItems: MediaAsset[];
 	onClearSelection: () => void;
 }) {
-	const editor = useEditor();
+	const { playback: pb, timeline: tl } = useManagers("playback", "timeline");
 	const hasMultipleSelected = selectedMediaIds.size > 1;
 	const isSelected = selectedMediaIds.has(item.id);
 
@@ -476,13 +476,13 @@ function MediaItemWithContextMenu({
 			}),
 		);
 
-		editor.timeline.insertElementsSameTrack({
+		tl.insertElementsSameTrack({
 			elements,
-			startTime: editor.playback.getCurrentTime(),
+			startTime: pb.getCurrentTime(),
 		});
 
 		onClearSelection();
-	}, [editor, item, allItems, selectedMediaIds, hasMultipleSelected, isSelected, onClearSelection]);
+	}, [pb, tl, item, allItems, selectedMediaIds, hasMultipleSelected, isSelected, onClearSelection]);
 
 	const selectionCount = selectedMediaIds.size;
 	const addLabel = hasMultipleSelected && isSelected
@@ -909,7 +909,7 @@ function MediaMiniPlayer() {
 		setTrimRange,
 		closePreview,
 	} = useMediaPreviewStore();
-	const editor = useEditor();
+	const { playback: pb2, timeline: tl2 } = useManagers("playback", "timeline");
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const seekBarRef = useRef<HTMLDivElement>(null);
 	const [isPlaying, setIsPlaying] = useState(false);
@@ -991,12 +991,12 @@ function MediaMiniPlayer() {
 			mediaType: previewAsset.type,
 			name: previewAsset.name,
 			duration: trimmedDuration,
-			startTime: editor.playback.getCurrentTime(),
+			startTime: pb2.getCurrentTime(),
 		});
 		if ("trimStart" in element) {
 			(element as { trimStart: number }).trimStart = trimStart;
 		}
-		editor.timeline.insertElement({
+		tl2.insertElement({
 			element,
 			placement: { mode: "auto" },
 		});

@@ -1,4 +1,4 @@
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { clamp } from "@/utils/math";
 import { NumberField } from "@/components/ui/number-field";
 import {
@@ -74,26 +74,26 @@ export function BlendingSection({
 	element: BlendingElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const blendMode = element.blendMode ?? DEFAULT_BLEND_MODE;
 	const didSelectRef = useRef(false);
 	const committedBlendModeRef = useRef(blendMode);
-	if (!editor.timeline.isPreviewActive()) {
+	if (!timeline.isPreviewActive()) {
 		committedBlendModeRef.current = blendMode;
 	}
 
 	const previewBlendMode = ({ value }: { value: BlendMode }) =>
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [
 				{ trackId, elementId: element.id, updates: { blendMode: value } },
 			],
 		});
 
 	const commitBlendMode = (value: string) => {
-		if (editor.timeline.isPreviewActive()) {
-			editor.timeline.commitPreview();
+		if (timeline.isPreviewActive()) {
+			timeline.commitPreview();
 		} else {
-			editor.timeline.updateElements({
+			timeline.updateElements({
 				updates: [
 					{
 						trackId,
@@ -108,7 +108,7 @@ export function BlendingSection({
 
 	const handleBlendModeOpenChange = (isOpen: boolean) => {
 		if (!isOpen) {
-			if (!didSelectRef.current) editor.timeline.discardPreview();
+			if (!didSelectRef.current) timeline.discardPreview();
 			didSelectRef.current = false;
 		}
 	};

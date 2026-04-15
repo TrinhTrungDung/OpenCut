@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useSelectionManager } from "@/hooks/editor";
 import type { SelectedKeyframeRef } from "@/types/animation";
 
 function getSelectedKeyframeId({
@@ -23,14 +23,14 @@ function mergeUniqueKeyframes({
 }
 
 export function useKeyframeSelection() {
-	const editor = useEditor();
+	const selection = useSelectionManager();
 	const selectedKeyframes = useSyncExternalStore(
-		(listener) => editor.selection.subscribe(listener),
-		() => editor.selection.getSelectedKeyframes(),
+		(listener) => selection.subscribe(listener),
+		() => selection.getSelectedKeyframes(),
 	);
 	const keyframeSelectionAnchor = useSyncExternalStore(
-		(listener) => editor.selection.subscribe(listener),
-		() => editor.selection.getKeyframeSelectionAnchor(),
+		(listener) => selection.subscribe(listener),
+		() => selection.getKeyframeSelectionAnchor(),
 	);
 
 	const isKeyframeSelected = useCallback(
@@ -53,13 +53,13 @@ export function useKeyframeSelection() {
 			anchorKeyframe?: SelectedKeyframeRef;
 		}) => {
 			const uniqueKeyframes = mergeUniqueKeyframes({ keyframes });
-			editor.selection.setSelectedKeyframes({
+			selection.setSelectedKeyframes({
 				keyframes: uniqueKeyframes,
 				anchorKeyframe:
 					anchorKeyframe ?? uniqueKeyframes[uniqueKeyframes.length - 1] ?? null,
 			});
 		},
-		[editor],
+		[selection],
 	);
 
 	const addKeyframesToSelection = useCallback(
@@ -73,13 +73,13 @@ export function useKeyframeSelection() {
 			const mergedKeyframes = mergeUniqueKeyframes({
 				keyframes: [...selectedKeyframes, ...keyframes],
 			});
-			editor.selection.setSelectedKeyframes({
+			selection.setSelectedKeyframes({
 				keyframes: mergedKeyframes,
 				anchorKeyframe:
 					anchorKeyframe ?? mergedKeyframes[mergedKeyframes.length - 1] ?? null,
 			});
 		},
-		[selectedKeyframes, editor],
+		[selectedKeyframes, selection],
 	);
 
 	const removeKeyframesFromSelection = useCallback(
@@ -99,18 +99,18 @@ export function useKeyframeSelection() {
 						getSelectedKeyframeId({ keyframe: selectedKeyframe }),
 					),
 			);
-			editor.selection.setSelectedKeyframes({
+			selection.setSelectedKeyframes({
 				keyframes: nextKeyframes,
 				anchorKeyframe:
 					anchorKeyframe ?? nextKeyframes[nextKeyframes.length - 1] ?? null,
 			});
 		},
-		[selectedKeyframes, editor],
+		[selectedKeyframes, selection],
 	);
 
 	const clearKeyframeSelection = useCallback(() => {
-		editor.selection.clearKeyframeSelection();
-	}, [editor]);
+		selection.clearKeyframeSelection();
+	}, [selection]);
 
 	const toggleKeyframeSelection = useCallback(
 		({

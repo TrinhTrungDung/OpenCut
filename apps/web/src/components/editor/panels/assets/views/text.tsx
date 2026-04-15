@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { DraggableItem } from "@/components/editor/panels/assets/draggable-item";
 import { PanelView } from "@/components/editor/panels/assets/views/base-view";
 import { Input } from "@/components/ui/input";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { DEFAULT_TEXT_ELEMENT } from "@/constants/text-constants";
 import { buildTextElement } from "@/lib/timeline/element-utils";
 import {
@@ -21,14 +21,14 @@ import { cn } from "@/utils/ui";
 import { loadFullFont } from "@/lib/fonts/google-fonts";
 
 export function TextView() {
-	const editor = useEditor();
+	const { playback, timeline, scenes } = useManagers("playback", "timeline", "scenes");
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedCategory, setSelectedCategory] =
 		useState<TextTemplateCategory | "all">("all");
 
 	const handleAddDefaultText = useCallback(
 		({ currentTime }: { currentTime: number }) => {
-			const activeScene = editor.scenes.getActiveScene();
+			const activeScene = scenes.getActiveScene();
 			if (!activeScene) return;
 
 			const element = buildTextElement({
@@ -36,17 +36,17 @@ export function TextView() {
 				startTime: currentTime,
 			});
 
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				element,
 				placement: { mode: "auto" },
 			});
 		},
-		[editor],
+		[scenes, timeline],
 	);
 
 	const handleApplyTemplate = useCallback(
 		({ template }: { template: TextTemplate }) => {
-			const activeScene = editor.scenes.getActiveScene();
+			const activeScene = scenes.getActiveScene();
 			if (!activeScene) return;
 
 			/* Ensure the template's font is loaded before rendering */
@@ -54,15 +54,15 @@ export function TextView() {
 				loadFullFont({ family: template.style.fontFamily });
 			}
 
-			const currentTime = editor.playback.getCurrentTime();
+			const currentTime = playback.getCurrentTime();
 			const element = applyTextTemplate({ template, startTime: currentTime });
 
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				element,
 				placement: { mode: "auto" },
 			});
 		},
-		[editor],
+		[scenes, timeline],
 	);
 
 	const filteredTemplates = useMemo(() => {

@@ -12,7 +12,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
+import type { ProjectManager } from "@/core/managers/project-manager";
 import { useProjectsStore } from "./store";
 import type {
 	TProjectMetadata,
@@ -85,22 +86,22 @@ const VIEW_MODE_OPTIONS = [
 
 export default function ProjectsPage() {
 	const { searchQuery, sortKey, sortOrder, viewMode } = useProjectsStore();
-	const editor = useEditor();
+	const project = useProject();
 
 	useEffect(() => {
-		if (!editor.project.getIsInitialized()) {
-			editor.project.loadAllProjects();
+		if (!project.getIsInitialized()) {
+			project.loadAllProjects();
 		}
-	}, [editor.project]);
+	}, [project]);
 
 	const sortOption: TProjectSortOption = `${sortKey}-${sortOrder}`;
-	const projectsToDisplay = editor.project.getFilteredAndSortedProjects({
+	const projectsToDisplay = project.getFilteredAndSortedProjects({
 		searchQuery,
 		sortOption,
 	});
 
-	const isLoading = editor.project.getIsLoading();
-	const isInitialized = editor.project.getIsInitialized();
+	const isLoading = project.getIsLoading();
+	const isInitialized = project.getIsInitialized();
 
 	return (
 		<div className="bg-background min-h-screen">
@@ -356,49 +357,49 @@ const PROJECT_ACTIONS = [
 ] as const;
 
 async function deleteProjects({
-	editor,
+	project,
 	ids,
 }: {
-	editor: ReturnType<typeof useEditor>;
+	project: ProjectManager;
 	ids: string[];
 }) {
-	await editor.project.deleteProjects({ ids });
+	await project.deleteProjects({ ids });
 }
 
 async function duplicateProjects({
-	editor,
+	project,
 	ids,
 }: {
-	editor: ReturnType<typeof useEditor>;
+	project: ProjectManager;
 	ids: string[];
 }) {
-	await editor.project.duplicateProjects({ ids });
+	await project.duplicateProjects({ ids });
 }
 
 async function renameProject({
-	editor,
+	project,
 	id,
 	name,
 }: {
-	editor: ReturnType<typeof useEditor>;
+	project: ProjectManager;
 	id: string;
 	name: string;
 }) {
-	await editor.project.renameProject({ id, name });
+	await project.renameProject({ id, name });
 }
 
 function ProjectActions() {
-	const editor = useEditor();
+	const project = useProject();
 	const { selectedProjectIds, clearSelectedProjects } = useProjectsStore();
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-	const savedProjects = editor.project.getSavedProjects();
+	const savedProjects = project.getSavedProjects();
 	const selectedProjectNames = savedProjects
-		.filter((project) => selectedProjectIds.includes(project.id))
-		.map((project) => project.name);
+		.filter((p) => selectedProjectIds.includes(p.id))
+		.map((p) => p.name);
 
 	const handleDuplicate = async () => {
-		await duplicateProjects({ editor, ids: selectedProjectIds });
+		await duplicateProjects({ project, ids: selectedProjectIds });
 		clearSelectedProjects();
 	};
 
@@ -407,7 +408,7 @@ function ProjectActions() {
 	};
 
 	const handleDeleteConfirm = async () => {
-		await deleteProjects({ editor, ids: selectedProjectIds });
+		await deleteProjects({ project, ids: selectedProjectIds });
 		clearSelectedProjects();
 		setIsDeleteDialogOpen(false);
 	};
@@ -502,11 +503,11 @@ function SortDropdown({ children }: { children: React.ReactNode }) {
 }
 
 function NewProjectButton() {
-	const editor = useEditor();
+	const project = useProject();
 	const router = useRouter();
 
 	const handleCreateProject = async () => {
-		const projectId = await editor.project.createNewProject({
+		const projectId = await project.createNewProject({
 			name: "New project",
 		});
 		router.push(`/editor/${projectId}`);
@@ -544,19 +545,19 @@ function ProjectItem({
 	const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
-	const editor = useEditor();
+	const projectManager = useProject();
 	const durationLabel = formatProjectDuration({ duration: project.duration });
 	const isMultiSelect = selectedProjectCount > 1;
 	const isGridView = viewMode === "grid";
 
 	const handleRename = () => setIsRenameDialogOpen(true);
 	const handleDuplicate = async () => {
-		await duplicateProjects({ editor, ids: [project.id] });
+		await duplicateProjects({ project: projectManager, ids: [project.id] });
 	};
 	const handleDeleteClick = () => setIsDeleteDialogOpen(true);
 	const handleInfoClick = () => setIsInfoDialogOpen(true);
 	const handleDeleteConfirm = async () => {
-		await deleteProjects({ editor, ids: [project.id] });
+		await deleteProjects({ project: projectManager, ids: [project.id] });
 		setIsDeleteDialogOpen(false);
 	};
 
@@ -736,7 +737,7 @@ function ProjectItem({
 				onOpenChange={setIsRenameDialogOpen}
 				projectName={project.name}
 				onConfirm={async (newName) => {
-					await renameProject({ editor, id: project.id, name: newName });
+					await renameProject({ project: projectManager, id: project.id, name: newName });
 					setIsRenameDialogOpen(false);
 				}}
 			/>
@@ -947,12 +948,12 @@ function ProjectsSkeleton() {
 function EmptyState() {
 	const { searchQuery, setSearchQuery } = useProjectsStore();
 	const router = useRouter();
-	const editor = useEditor();
-	const savedProjects = editor.project.getSavedProjects();
+	const projectManager = useProject();
+	const savedProjects = projectManager.getSavedProjects();
 
 	const handleCreateProject = async () => {
 		try {
-			const projectId = await editor.project.createNewProject({
+			const projectId = await projectManager.createNewProject({
 				name: "New project",
 			});
 			router.push(`/editor/${projectId}`);

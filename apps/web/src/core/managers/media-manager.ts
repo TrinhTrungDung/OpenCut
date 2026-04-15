@@ -162,6 +162,10 @@ export class MediaManager {
 		return this.assets;
 	}
 
+	getAssetById(id: string): MediaAsset | undefined {
+		return this.assets.find((asset) => asset.id === id);
+	}
+
 	setAssets({ assets }: { assets: MediaAsset[] }): void {
 		this.assets = assets;
 		this.notify();

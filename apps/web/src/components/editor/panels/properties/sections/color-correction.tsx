@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { clamp } from "@/utils/math";
 import { NumberField } from "@/components/ui/number-field";
 import { buildDefaultEffectInstance } from "@/lib/effects";
@@ -76,7 +76,7 @@ export function ColorCorrectionSection({
 	element: ColorCorrectionElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const ccEffect = findColorCorrectionEffect(element.effects);
 	const isScrubbing = useRef(false);
 
@@ -90,7 +90,7 @@ export function ColorCorrectionSection({
 					value,
 				});
 				isScrubbing.current = true;
-				editor.timeline.previewElements({
+				timeline.previewElements({
 					updates: [
 						{
 							trackId,
@@ -100,13 +100,13 @@ export function ColorCorrectionSection({
 					],
 				});
 			},
-		[editor, trackId, element.id, element.effects],
+		[timeline, trackId, element.id, element.effects],
 	);
 
 	const handleScrubEnd = useCallback(() => {
 		isScrubbing.current = false;
-		editor.timeline.commitPreview();
-	}, [editor]);
+		timeline.commitPreview();
+	}, [timeline]);
 
 	const handleChange = useCallback(
 		({
@@ -123,7 +123,7 @@ export function ColorCorrectionSection({
 					key,
 					value,
 				});
-				editor.timeline.updateElements({
+				timeline.updateElements({
 					updates: [
 						{
 							trackId,
@@ -133,7 +133,7 @@ export function ColorCorrectionSection({
 					],
 				});
 			},
-		[editor, trackId, element.id, element.effects],
+		[timeline, trackId, element.id, element.effects],
 	);
 
 	const handleReset = useCallback(() => {
@@ -141,7 +141,7 @@ export function ColorCorrectionSection({
 		const updatedEffects = (element.effects ?? []).filter(
 			(e) => e.id !== ccEffect.id,
 		);
-		editor.timeline.updateElements({
+		timeline.updateElements({
 			updates: [
 				{
 					trackId,
@@ -150,7 +150,7 @@ export function ColorCorrectionSection({
 				},
 			],
 		});
-	}, [editor, trackId, element.id, element.effects, ccEffect]);
+	}, [timeline, trackId, element.id, element.effects, ccEffect]);
 
 	const hasNonDefaultValues = ccEffect
 		? Object.values(ccEffect.params).some((v) => v !== 0)
@@ -206,7 +206,7 @@ export function ColorCorrectionSection({
 											key,
 											value: 0,
 										});
-										editor.timeline.updateElements({
+										timeline.updateElements({
 											updates: [
 												{
 													trackId,

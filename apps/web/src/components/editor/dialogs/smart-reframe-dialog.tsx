@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useSmartReframe } from "@/hooks/use-smart-reframe";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { REFRAME_PRESETS, type ReframePreset } from "@/types/smart-reframe";
 import { cn } from "@/utils/ui";
 
@@ -23,7 +23,7 @@ import { cn } from "@/utils/ui";
  * the computed crop by resizing the project canvas.
  */
 export function SmartReframeDialog() {
-	const editor = useEditor();
+	const { timeline, media, selection } = useManagers("timeline", "media", "selection");
 	const { status, progress, result, error, isOpen, analyze, apply, close } =
 		useSmartReframe();
 	const [selectedPreset, setSelectedPreset] = useState<ReframePreset>(
@@ -33,10 +33,10 @@ export function SmartReframeDialog() {
 	const selectedVideoFile = useMemo(() => {
 		if (!isOpen) return null;
 
-		const selectedElements = editor.selection.getSelectedElements();
+		const selectedElements = selection.getSelectedElements();
 		if (selectedElements.length === 0) return null;
 
-		const elementsWithTracks = editor.timeline.getElementsWithTracks({
+		const elementsWithTracks = timeline.getElementsWithTracks({
 			elements: selectedElements,
 		});
 
@@ -47,12 +47,12 @@ export function SmartReframeDialog() {
 		if (!videoElement) return null;
 
 		const mediaId = (videoElement.element as { mediaId: string }).mediaId;
-		const asset = editor.media
+		const asset = media
 			.getAssets()
 			.find((a) => a.id === mediaId);
 
 		return asset?.file ?? null;
-	}, [editor, isOpen]);
+	}, [selection, timeline, media, isOpen]);
 
 	const handleAnalyze = async () => {
 		if (!selectedVideoFile) return;

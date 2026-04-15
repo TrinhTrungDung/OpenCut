@@ -1,12 +1,9 @@
 import { getSnappedSeekTime } from "@/lib/time";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useEdgeAutoScroll } from "@/hooks/timeline/use-edge-auto-scroll";
-import { useEditor } from "../use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useShiftKey } from "@/hooks/use-shift-key";
-import {
-	findSnapPoints,
-	snapToNearestPoint,
-} from "@/lib/timeline/snap-utils";
+import { findSnapPoints, snapToNearestPoint } from "@/lib/timeline/snap-utils";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
 
 interface UseTimelinePlayheadProps {
@@ -24,17 +21,22 @@ export function useTimelinePlayhead({
 	tracksScrollRef,
 	playheadRef,
 }: UseTimelinePlayheadProps) {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
-	const currentTime = editor.playback.getCurrentTime();
-	const duration = editor.timeline.getTotalDuration();
-	const isPlaying = editor.playback.getIsPlaying();
-	const isScrubbing = editor.playback.getIsScrubbing();
+	const { playback, timeline, scenes, project } = useManagers(
+		"playback",
+		"timeline",
+		"scenes",
+		"project",
+	);
+	const activeProject = project.getActive();
+	const currentTime = playback.getCurrentTime();
+	const duration = timeline.getTotalDuration();
+	const isPlaying = playback.getIsPlaying();
+	const isScrubbing = playback.getIsScrubbing();
 	const isShiftHeldRef = useShiftKey();
 
 	const seek = useCallback(
-		({ time }: { time: number }) => editor.playback.seek({ time }),
-		[editor.playback],
+		({ time }: { time: number }) => playback.seek({ time }),
+		[playback],
 	);
 
 	const [scrubTime, setScrubTime] = useState<number | null>(null);
@@ -42,6 +44,16 @@ export function useTimelinePlayhead({
 	const [isDraggingRuler, setIsDraggingRuler] = useState(false);
 	const [hasDraggedRuler, setHasDraggedRuler] = useState(false);
 	const lastMouseXRef = useRef<number>(0);
+	const seekThrottleRef = useRef<number | null>(null);
+	const pendingSeekTimeRef = useRef<number | null>(null);
+
+	// Refs to avoid effect dependency churn during scrubbing
+	const scrubTimeRef = useRef<number | null>(null);
+	scrubTimeRef.current = scrubTime;
+	const isDraggingRulerRef = useRef(false);
+	isDraggingRulerRef.current = isDraggingRuler;
+	const hasDraggedRulerRef = useRef(false);
+	hasDraggedRulerRef.current = hasDraggedRuler;
 
 	const playheadPosition =
 		isScrubbing && scrubTime !== null ? scrubTime : currentTime;
@@ -85,9 +97,8 @@ export function useTimelinePlayhead({
 			const shouldSnap = snappingEnabled && !isShiftHeldRef.current;
 			const time = (() => {
 				if (!shouldSnap) return frameTime;
-				const tracks = editor.timeline.getTracks();
-				const bookmarks =
-					editor.scenes.getActiveScene()?.bookmarks ?? [];
+				const tracks = timeline.getTracks();
+				const bookmarks = scenes.getActiveScene()?.bookmarks ?? [];
 				const snapPoints = findSnapPoints({
 					tracks,
 					playheadTime: frameTime,
@@ -103,7 +114,19 @@ export function useTimelinePlayhead({
 			})();
 
 			setScrubTime(time);
-			seek({ time });
+			pendingSeekTimeRef.current = time;
+
+			// Throttle seek() to avoid re-rendering entire editor on every frame
+			// Playhead visual position updates immediately via scrubTime state,
+			// but expensive video frame decode only runs every ~50ms
+			if (seekThrottleRef.current === null) {
+				seekThrottleRef.current = window.setTimeout(() => {
+					seekThrottleRef.current = null;
+					if (pendingSeekTimeRef.current !== null) {
+						seek({ time: pendingSeekTimeRef.current });
+					}
+				}, 50);
+			}
 
 			lastMouseXRef.current = event.clientX;
 		},
@@ -114,8 +137,8 @@ export function useTimelinePlayhead({
 			rulerRef,
 			activeProject.settings.fps,
 			isShiftHeldRef,
-			editor.scenes,
-			editor.timeline,
+			scenes,
+			timeline,
 		],
 	);
 
@@ -123,10 +146,10 @@ export function useTimelinePlayhead({
 		({ event }: { event: React.MouseEvent }) => {
 			event.preventDefault();
 			event.stopPropagation();
-			editor.playback.setScrubbing({ isScrubbing: true });
+			playback.setScrubbing({ isScrubbing: true });
 			handleScrub({ event });
 		},
-		[handleScrub, editor.playback],
+		[handleScrub, playback],
 	);
 
 	const handleRulerMouseDown = useCallback(
@@ -139,10 +162,10 @@ export function useTimelinePlayhead({
 			setIsDraggingRuler(true);
 			setHasDraggedRuler(false);
 
-		editor.playback.setScrubbing({ isScrubbing: true });
-		handleScrub({ event, snappingEnabled: false });
-	},
-	[handleScrub, playheadRef, editor.playback],
+			playback.setScrubbing({ isScrubbing: true });
+			handleScrub({ event, snappingEnabled: false });
+		},
+		[handleScrub, playheadRef, playback],
 	);
 
 	const handlePlayheadMouseDownEvent = useCallback(
@@ -166,38 +189,50 @@ export function useTimelinePlayhead({
 	useEffect(() => {
 		if (!isScrubbing) return;
 
-		const handleMouseMove = ({ event }: { event: MouseEvent }) => {
-			handleScrub({ event });
-			if (isDraggingRuler) {
-				setHasDraggedRuler(true);
-			}
+		let rafId: number | null = null;
+
+		const onMouseMove = (event: MouseEvent) => {
+			if (rafId !== null) return;
+			rafId = requestAnimationFrame(() => {
+				rafId = null;
+				handleScrub({ event });
+				if (isDraggingRulerRef.current) {
+					setHasDraggedRuler(true);
+				}
+			});
 		};
 
-		const handleMouseUp = ({ event }: { event: MouseEvent }) => {
-			editor.playback.setScrubbing({ isScrubbing: false });
-			if (scrubTime !== null) {
-				seek({ time: scrubTime });
-				editor.project.setTimelineViewState({
+		const onMouseUp = (event: MouseEvent) => {
+			if (rafId !== null) {
+				cancelAnimationFrame(rafId);
+				rafId = null;
+			}
+			if (seekThrottleRef.current !== null) {
+				clearTimeout(seekThrottleRef.current);
+				seekThrottleRef.current = null;
+			}
+			playback.setScrubbing({ isScrubbing: false });
+			if (scrubTimeRef.current !== null) {
+				seek({ time: scrubTimeRef.current });
+				project.setTimelineViewState({
 					viewState: {
 						zoomLevel,
 						scrollLeft: tracksScrollRef.current?.scrollLeft ?? 0,
-						playheadTime: scrubTime,
+						playheadTime: scrubTimeRef.current,
 					},
 				});
 			}
 			setScrubTime(null);
+			pendingSeekTimeRef.current = null;
 
-			if (isDraggingRuler) {
+			if (isDraggingRulerRef.current) {
 				setIsDraggingRuler(false);
-				if (!hasDraggedRuler) {
+				if (!hasDraggedRulerRef.current) {
 					handleScrub({ event, snappingEnabled: false });
 				}
 				setHasDraggedRuler(false);
 			}
 		};
-
-		const onMouseMove = (event: MouseEvent) => handleMouseMove({ event });
-		const onMouseUp = (event: MouseEvent) => handleMouseUp({ event });
 
 		window.addEventListener("mousemove", onMouseMove);
 		window.addEventListener("mouseup", onMouseUp);
@@ -205,15 +240,20 @@ export function useTimelinePlayhead({
 		return () => {
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
+			if (rafId !== null) {
+				cancelAnimationFrame(rafId);
+			}
+			if (seekThrottleRef.current !== null) {
+				clearTimeout(seekThrottleRef.current);
+				seekThrottleRef.current = null;
+			}
 		};
 	}, [
 		isScrubbing,
-		scrubTime,
 		seek,
 		handleScrub,
-		isDraggingRuler,
-		hasDraggedRuler,
-		editor,
+		playback,
+		project,
 		tracksScrollRef,
 		zoomLevel,
 	]);

@@ -1,4 +1,4 @@
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import {
 	TooltipProvider,
 	Tooltip,
@@ -77,9 +77,9 @@ export function TimelineToolbar({
 }
 
 function ToolbarLeftSection() {
-	const editor = useEditor();
-	const currentTime = editor.playback.getCurrentTime();
-	const isCurrentlyBookmarked = editor.scenes.isBookmarked({ time: currentTime });
+	const { playback, scenes } = useManagers("playback", "scenes");
+	const currentTime = playback.getCurrentTime();
+	const isCurrentlyBookmarked = scenes.isBookmarked({ time: currentTime });
 
 	const handleAction = ({
 		action,
@@ -166,8 +166,8 @@ function ToolbarLeftSection() {
 }
 
 function SceneSelector() {
-	const editor = useEditor();
-	const currentScene = editor.scenes.getActiveScene();
+	const { scenes } = useManagers("scenes");
+	const currentScene = scenes.getActiveScene();
 
 	return (
 		<div>

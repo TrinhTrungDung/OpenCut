@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { useState, useRef, useSyncExternalStore } from "react";
 import { extractTimelineAudio } from "@/lib/media/mediabunny";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import type { TimelineTrack } from "@/types/timeline";
 import { DEFAULT_TEXT_ELEMENT } from "@/constants/text-constants";
 import { TRANSCRIPTION_LANGUAGES } from "@/constants/transcription-constants";
@@ -37,11 +37,11 @@ export function Captions() {
 	const [processingStep, setProcessingStep] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
-	const editor = useEditor();
+	const { timeline, project, media, selection } = useManagers("timeline", "project", "media", "selection");
 
 	const selectedElements = useSyncExternalStore(
-		(listener) => editor.selection.subscribe(listener),
-		() => editor.selection.getSelectedElements(),
+		(listener) => selection.subscribe(listener),
+		() => selection.getSelectedElements(),
 	);
 
 	const apiKey = useAIStore((s) => s.apiKey);
@@ -75,28 +75,28 @@ export function Captions() {
 
 	const insertCaptions = (captionChunks: CaptionChunk[]) => {
 		const canvasHeight =
-			editor.project.getActive().settings.canvasSize.height;
+			project.getActive().settings.canvasSize.height;
 
 		/* Remove existing caption tracks (text tracks named "Caption *") */
-		const tracks = editor.timeline.getTracks();
+		const tracks = timeline.getTracks();
 		for (const track of tracks) {
 			if (
 				track.type === "text" &&
 				track.elements.length > 0 &&
 				track.elements[0].name.startsWith("Caption ")
 			) {
-				editor.timeline.removeTrack({ trackId: track.id });
+				timeline.removeTrack({ trackId: track.id });
 			}
 		}
 
-		const captionTrackId = editor.timeline.addTrack({
+		const captionTrackId = timeline.addTrack({
 			type: "text",
 			index: 0,
 		});
 
 		for (let i = 0; i < captionChunks.length; i++) {
 			const caption = captionChunks[i];
-			editor.timeline.insertElement({
+			timeline.insertElement({
 				placement: { mode: "explicit", trackId: captionTrackId },
 				element: {
 					...DEFAULT_TEXT_ELEMENT,
@@ -158,13 +158,13 @@ export function Captions() {
 
 	/** Build tracks containing only the selected elements, plus compute their time range */
 	const getSelectedScope = () => {
-		const allTracks = editor.timeline.getTracks();
-		const selected = editor.selection.getSelectedElements();
+		const allTracks = timeline.getTracks();
+		const selected = selection.getSelectedElements();
 
 		if (selected.length === 0) {
 			return {
 				tracks: allTracks,
-				totalDuration: editor.timeline.getTotalDuration(),
+				totalDuration: timeline.getTotalDuration(),
 				timeOffset: 0,
 			};
 		}
@@ -205,7 +205,7 @@ export function Captions() {
 
 			const audioBlob = await extractTimelineAudio({
 				tracks,
-				mediaAssets: editor.media.getAssets(),
+				mediaAssets: media.getAssets(),
 				totalDuration,
 			});
 
