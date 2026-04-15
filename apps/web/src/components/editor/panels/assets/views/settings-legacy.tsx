@@ -21,7 +21,7 @@ import {
 import { patternCraftGradients } from "@/data/colors/pattern-craft";
 import { colors } from "@/data/colors/solid";
 import { syntaxUIGradients } from "@/data/colors/syntax-ui";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import { useEditorStore } from "@/stores/editor-store";
 import { dimensionToAspectRatio } from "@/utils/geometry";
 import { cn } from "@/utils/ui";
@@ -44,8 +44,8 @@ export function SettingsView() {
 }
 
 function ProjectInfoView() {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const project = useProject();
+	const activeProject = project.getActive();
 	const { canvasPresets } = useEditorStore();
 
 	const findPresetIndexByAspectRatio = ({
@@ -82,7 +82,7 @@ function ProjectInfoView() {
 	const handleAspectRatioChange = ({ value }: { value: string }) => {
 		if (value === originalPresetValue) {
 			const canvasSize = originalCanvasSize ?? currentCanvasSize;
-			editor.project.updateSettings({
+			project.updateSettings({
 				settings: { canvasSize },
 			});
 			return;
@@ -90,13 +90,13 @@ function ProjectInfoView() {
 		const index = parseInt(value, 10);
 		const preset = canvasPresets[index];
 		if (preset) {
-			editor.project.updateSettings({ settings: { canvasSize: preset } });
+			project.updateSettings({ settings: { canvasSize: preset } });
 		}
 	};
 
 	const handleFpsChange = (value: string) => {
 		const fps = parseFloat(value);
-		editor.project.updateSettings({ settings: { fps } });
+		project.updateSettings({ settings: { fps } });
 	};
 
 	return (
@@ -250,26 +250,26 @@ const BackgroundPreviews = memo(
 BackgroundPreviews.displayName = "BackgroundPreviews";
 
 function BackgroundView() {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const project = useProject();
+	const activeProject = project.getActive();
 	const blurLevels = useMemo(() => BLUR_INTENSITY_PRESETS, []);
 
 	const handleBlurSelect = useCallback(
 		async ({ blurIntensity }: { blurIntensity: number }) => {
-			await editor.project.updateSettings({
+			await project.updateSettings({
 				settings: { background: { type: "blur", blurIntensity } },
 			});
 		},
-		[editor.project],
+		[project],
 	);
 
 	const handleColorSelect = useCallback(
 		async ({ color }: { color: string }) => {
-			await editor.project.updateSettings({
+			await project.updateSettings({
 				settings: { background: { type: "color", color } },
 			});
 		},
-		[editor.project],
+		[project],
 	);
 
 	const currentBlurIntensity =

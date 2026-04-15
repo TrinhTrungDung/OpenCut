@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import type { TextElement } from "@/types/timeline";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import {
 	getAllTextTemplates,
 	searchTextTemplates,
@@ -30,7 +30,7 @@ export function TextPresetsTab({
 	element: TextElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedCategory, setSelectedCategory] =
 		useState<TextTemplateCategory | "all">("all");
@@ -92,11 +92,11 @@ export function TextPresetsTab({
 				(updates as Record<string, unknown>).animations = { channels };
 			}
 
-			editor.timeline.updateElements({
+			timeline.updateElements({
 				updates: [{ trackId, elementId: element.id, updates }],
 			});
 		},
-		[editor, trackId, element],
+		[timeline, trackId, element],
 	);
 
 	const filteredTemplates = useMemo(() => {

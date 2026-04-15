@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useDeepCompareEffect from "use-deep-compare-effect";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import { useRafLoop } from "@/hooks/use-raf-loop";
 import { useContainerSize } from "@/hooks/use-container-size";
 import { useFullscreen } from "@/hooks/use-fullscreen";
@@ -21,8 +22,8 @@ import { PreviewToolbar } from "./toolbar";
 import { useVideoElementSync } from "@/hooks/use-video-element-sync";
 
 function usePreviewSize() {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const { project } = useManagers("project");
+	const activeProject = project.getActive();
 
 	return {
 		width: activeProject?.settings.canvasSize.width,
@@ -34,14 +35,14 @@ export function PreviewPanel() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const { isFullscreen, toggleFullscreen } = useFullscreen({ containerRef });
 	const previewAsset = useMediaPreviewStore((s) => s.previewAsset);
-	const editor = useEditor();
+	const { selection } = useManagers("selection");
 
 	/* Close media preview when user interacts with the timeline */
 	useEffect(() => {
 		if (!previewAsset) return;
 		/* Skip the first notification (initial state) */
 		let skipFirst = true;
-		const unsubscribe = editor.selection.subscribe(() => {
+		const unsubscribe = selection.subscribe(() => {
 			if (skipFirst) {
 				skipFirst = false;
 				return;
@@ -49,7 +50,7 @@ export function PreviewPanel() {
 			useMediaPreviewStore.getState().closePreview();
 		});
 		return unsubscribe;
-	}, [editor.selection, previewAsset]);
+	}, [selection, previewAsset]);
 
 	return (
 		<div
@@ -79,17 +80,17 @@ function VideoElementSyncController() {
 }
 
 function RenderTreeController() {
-	const editor = useEditor();
-	const tracks = editor.timeline.getTracks();
-	const mediaAssets = editor.media.getAssets();
-	const activeProject = editor.project.getActive();
+	const { timeline, media, project, renderer } = useManagers("timeline", "media", "project", "renderer");
+	const tracks = timeline.getTracks();
+	const mediaAssets = media.getAssets();
+	const activeProject = project.getActive();
 
 	const { width, height } = usePreviewSize();
 
 	useDeepCompareEffect(() => {
 		if (!activeProject) return;
 
-		const duration = editor.timeline.getTotalDuration();
+		const duration = timeline.getTotalDuration();
 		const renderTree = buildScene({
 			tracks,
 			mediaAssets,
@@ -99,7 +100,7 @@ function RenderTreeController() {
 			isPreview: true,
 		});
 
-		editor.renderer.setRenderTree({ renderTree });
+		renderer.setRenderTree({ renderTree });
 	}, [tracks, mediaAssets, activeProject?.settings.background, width, height]);
 
 	return null;
@@ -108,8 +109,8 @@ function RenderTreeController() {
 /** Live debug overlay showing FPS and frame timing */
 function DebugOverlay({ statsRef }: { statsRef: React.RefObject<{ fps: number; lastRenderMs: number; droppedFrames: number } | null> }) {
 	const [stats, setStats] = useState({ fps: 0, lastRenderMs: 0, droppedFrames: 0 });
-	const editor = useEditor();
-	const isPlaying = editor.playback.getIsPlaying();
+	const { playback } = useManagers("playback");
+	const isPlaying = playback.getIsPlaying();
 
 	useEffect(() => {
 		if (!isPlaying) return;
@@ -158,8 +159,9 @@ function PreviewCanvas({
 	const lastSceneRef = useRef<RootNode | null>(null);
 	const { width: nativeWidth, height: nativeHeight } = usePreviewSize();
 	const containerSize = useContainerSize({ containerRef: outerContainerRef });
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const { project, renderer: rendererManager, playback } = useManagers("project", "renderer", "playback");
+	const editor = useEditorCore();
+	const activeProject = project.getActive();
 	const { overlays } = usePreviewStore();
 
 	// Debug stats
@@ -204,8 +206,8 @@ function PreviewCanvas({
 		return { width: displayWidth, height: displayHeight };
 	}, [nativeWidth, nativeHeight, containerSize.width, containerSize.height]);
 
-	const renderTree = editor.renderer.getRenderTree();
-	const isPlaying = editor.playback.getIsPlaying();
+	const renderTree = rendererManager.getRenderTree();
+	const isPlaying = playback.getIsPlaying();
 
 	// Force re-render when playback state changes
 	useEffect(() => {
@@ -267,7 +269,7 @@ function PreviewCanvas({
 					});
 			}
 		}
-	}, [renderer, renderTree, editor.playback]);
+	}, [renderer, renderTree, editor]);
 
 	useRafLoop(render);
 

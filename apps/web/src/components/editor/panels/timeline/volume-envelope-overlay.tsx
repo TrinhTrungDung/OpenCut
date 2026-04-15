@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useCallback } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { resolveVolumeAtTime } from "@/lib/animation";
 import { getNumberChannelForPath } from "@/lib/animation/number-channel";
 import type { ElementAnimations } from "@/types/animation";
@@ -40,7 +40,7 @@ export function VolumeEnvelopeOverlay({
 	trackId,
 	elementId,
 }: VolumeEnvelopeOverlayProps) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 
 	const polylinePoints = useMemo(() => {
 		if (duration <= 0 || width <= 0) return "";
@@ -88,7 +88,7 @@ export function VolumeEnvelopeOverlay({
 				localTime: time,
 			});
 
-			editor.timeline.upsertKeyframes({
+			timeline.upsertKeyframes({
 				keyframes: [
 					{
 						trackId,
@@ -100,7 +100,7 @@ export function VolumeEnvelopeOverlay({
 				],
 			});
 		},
-		[editor, trackId, elementId, baseVolume, animations, duration, width],
+		[timeline, trackId, elementId, baseVolume, animations, duration, width],
 	);
 
 	if (width <= 0 || height <= 0) return null;

@@ -2,7 +2,7 @@
 
 import type { EffectElement } from "@/types/timeline";
 import { getEffect } from "@/lib/effects/registry";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import {
 	Section,
 	SectionContent,
@@ -19,13 +19,13 @@ export function EffectProperties({
 	element: EffectElement;
 	trackId: string;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const definition = getEffect({ effectType: element.effectType });
 
 	const previewParam =
 		({ key }: { key: string }) =>
 		(value: number | string | boolean) =>
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{
 						trackId,
@@ -48,7 +48,7 @@ export function EffectProperties({
 							param={param}
 							value={element.params[param.key] ?? param.default}
 							onPreview={previewParam({ key: param.key })}
-							onCommit={() => editor.timeline.commitPreview()}
+							onCommit={() => timeline.commitPreview()}
 						/>
 					))}
 				</SectionFields>

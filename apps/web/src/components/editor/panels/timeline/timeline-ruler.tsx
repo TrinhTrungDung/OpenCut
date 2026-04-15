@@ -1,7 +1,7 @@
 import { type JSX, useLayoutEffect, useRef } from "react";
 import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
 import { DEFAULT_FPS } from "@/constants/project-constants";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { getRulerConfig, shouldShowLabel } from "@/lib/timeline/ruler-utils";
 import { useScrollPosition } from "@/hooks/timeline/use-scroll-position";
 import { TimelineTick } from "./timeline-tick";
@@ -27,12 +27,12 @@ export function TimelineRuler({
 	handleRulerTrackingMouseDown,
 	handleRulerMouseDown,
 }: TimelineRulerProps) {
-	const editor = useEditor();
-	const duration = editor.timeline.getTotalDuration();
+	const { timeline, project: projectManager } = useManagers("timeline", "project");
+	const duration = timeline.getTotalDuration();
 	const pixelsPerSecond = TIMELINE_CONSTANTS.PIXELS_PER_SECOND * zoomLevel;
 	const visibleDuration = dynamicTimelineWidth / pixelsPerSecond;
 	const effectiveDuration = Math.max(duration, visibleDuration);
-	const project = editor.project.getActive();
+	const project = projectManager.getActive();
 	const fps = project?.settings.fps ?? DEFAULT_FPS;
 	const { labelIntervalSeconds, tickIntervalSeconds } = getRulerConfig({
 		zoomLevel,

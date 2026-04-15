@@ -1,4 +1,4 @@
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import {
 	getKeyframeAtTime,
 	hasKeyframesForPath,
@@ -31,7 +31,7 @@ export function useKeyframedNumberProperty({
 	valueAtPlayhead: number;
 	buildBaseUpdates: ({ value }: { value: number }) => Partial<TimelineElement>;
 }) {
-	const editor = useEditor();
+	const timeline = useTimeline();
 
 	const hasAnimatedKeyframes = hasKeyframesForPath({ animations, propertyPath });
 	const keyframeAtTime = isPlayheadWithinElementRange
@@ -44,7 +44,7 @@ export function useKeyframedNumberProperty({
 
 	const previewValue = ({ value }: { value: number }) => {
 		if (shouldUseAnimatedChannel) {
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{
 						trackId,
@@ -63,7 +63,7 @@ export function useKeyframedNumberProperty({
 			return;
 		}
 
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [
 				{
 					trackId,
@@ -78,7 +78,7 @@ export function useKeyframedNumberProperty({
 		displayValue,
 		parse,
 		onPreview: (value) => previewValue({ value }),
-		onCommit: () => editor.timeline.commitPreview(),
+		onCommit: () => timeline.commitPreview(),
 	});
 
 	const toggleKeyframe = () => {
@@ -87,7 +87,7 @@ export function useKeyframedNumberProperty({
 		}
 
 		if (keyframeIdAtTime) {
-			editor.timeline.removeKeyframes({
+			timeline.removeKeyframes({
 				keyframes: [
 					{
 						trackId,
@@ -100,7 +100,7 @@ export function useKeyframedNumberProperty({
 			return;
 		}
 
-		editor.timeline.upsertKeyframes({
+		timeline.upsertKeyframes({
 			keyframes: [
 				{
 					trackId,
@@ -115,7 +115,7 @@ export function useKeyframedNumberProperty({
 
 	const commitValue = ({ value }: { value: number }) => {
 		if (shouldUseAnimatedChannel) {
-			editor.timeline.upsertKeyframes({
+			timeline.upsertKeyframes({
 				keyframes: [
 					{
 						trackId,
@@ -129,7 +129,7 @@ export function useKeyframedNumberProperty({
 			return;
 		}
 
-		editor.timeline.updateElements({
+		timeline.updateElements({
 			updates: [
 				{
 					trackId,

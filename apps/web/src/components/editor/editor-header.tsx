@@ -18,7 +18,7 @@ import { ExportButton } from "./export-button";
 import { ThemeToggle } from "../theme-toggle";
 import { DEFAULT_LOGO_URL, SOCIAL_LINKS } from "@/constants/site-constants";
 import { toast } from "sonner";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import { CommandIcon, Logout05Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ShortcutsDialog } from "./dialogs/shortcuts-dialog";
@@ -46,20 +46,20 @@ function ProjectDropdown() {
 	>(null);
 	const [isExiting, setIsExiting] = useState(false);
 	const router = useRouter();
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const project = useProject();
+	const activeProject = project.getActive();
 
 	const handleExit = async () => {
 		if (isExiting) return;
 		setIsExiting(true);
 
 		try {
-			await editor.project.prepareExit();
-			editor.project.closeProject();
+			await project.prepareExit();
+			project.closeProject();
 		} catch (error) {
 			console.error("Failed to prepare project exit:", error);
 		} finally {
-			editor.project.closeProject();
+			project.closeProject();
 			router.push("/projects");
 		}
 	};
@@ -71,7 +71,7 @@ function ProjectDropdown() {
 			newName !== activeProject.metadata.name
 		) {
 			try {
-				await editor.project.renameProject({
+				await project.renameProject({
 					id: activeProject.metadata.id,
 					name: newName.trim(),
 				});
@@ -89,7 +89,7 @@ function ProjectDropdown() {
 	const handleDeleteProject = async () => {
 		if (activeProject) {
 			try {
-				await editor.project.deleteProjects({
+				await project.deleteProjects({
 					ids: [activeProject.metadata.id],
 				});
 				router.push("/projects");
@@ -168,8 +168,8 @@ function ProjectDropdown() {
 }
 
 function EditableProjectName() {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const project = useProject();
+	const activeProject = project.getActive();
 	const [isEditing, setIsEditing] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const originalNameRef = useRef("");
@@ -198,7 +198,7 @@ function EditableProjectName() {
 
 		if (newName !== originalNameRef.current) {
 			try {
-				await editor.project.renameProject({
+				await project.renameProject({
 					id: activeProject.metadata.id,
 					name: newName,
 				});

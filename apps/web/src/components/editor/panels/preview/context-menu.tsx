@@ -5,7 +5,7 @@ import {
 	ContextMenuContent,
 	ContextMenuItem,
 } from "@/components/ui/context-menu";
-import { useEditor } from "@/hooks/use-editor";
+import { useRendererManager } from "@/hooks/editor";
 import { usePreviewStore } from "@/stores/preview-store";
 
 export function PreviewContextMenu({
@@ -15,7 +15,7 @@ export function PreviewContextMenu({
 	onToggleFullscreen: () => void;
 	containerRef: React.RefObject<HTMLElement | null>;
 }) {
-	const editor = useEditor();
+	const renderer = useRendererManager();
 	const { overlays, setOverlayVisibility } = usePreviewStore();
 
 	return (
@@ -23,7 +23,7 @@ export function PreviewContextMenu({
 			<ContextMenuItem onClick={onToggleFullscreen} inset>
 				Full screen
 			</ContextMenuItem>
-			<ContextMenuItem onClick={() => editor.renderer.saveSnapshot()} inset>
+			<ContextMenuItem onClick={() => renderer.saveSnapshot()} inset>
 				Save snapshot
 			</ContextMenuItem>
 			<ContextMenuCheckboxItem

@@ -7,12 +7,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import { Loader2 } from "lucide-react";
 
 export function MigrationDialog() {
-	const editor = useEditor();
-	const migrationState = editor.project.getMigrationState();
+	const project = useProject();
+	const migrationState = project.getMigrationState();
 
 	if (!migrationState.isMigrating) return null;
 

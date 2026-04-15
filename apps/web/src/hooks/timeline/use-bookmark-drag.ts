@@ -5,7 +5,7 @@ import {
 	useRef,
 	type RefObject,
 } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useShiftKey } from "@/hooks/use-shift-key";
 import { DRAG_THRESHOLD_PX } from "@/constants/timeline-constants";
 import { snapTimeToFrame } from "@/lib/time";
@@ -42,13 +42,13 @@ export function useBookmarkDrag({
 	snappingEnabled,
 	onSnapPointChange,
 }: UseBookmarkDragProps) {
-	const editor = useEditor();
+	const { playback, timeline, scenes, project } = useManagers("playback", "timeline", "scenes", "project");
 	const isShiftHeldRef = useShiftKey();
-	const tracks = editor.timeline.getTracks();
-	const activeScene = editor.scenes.getActiveScene();
+	const tracks = timeline.getTracks();
+	const activeScene = scenes.getActiveScene();
 	const bookmarks = activeScene?.bookmarks ?? [];
-	const playheadTime = editor.playback.getCurrentTime();
-	const duration = editor.timeline.getTotalDuration();
+	const playheadTime = playback.getCurrentTime();
+	const duration = timeline.getTotalDuration();
 
 	const [dragState, setDragState] = useState<BookmarkDragState>({
 		isDragging: false,
@@ -135,7 +135,7 @@ export function useBookmarkDrag({
 					return;
 				}
 
-				const activeProject = editor.project.getActive();
+				const activeProject = project.getActive();
 				if (!activeProject) return;
 
 				const scrollLeft = scrollContainer.scrollLeft;
@@ -165,7 +165,7 @@ export function useBookmarkDrag({
 
 			if (!dragState.isDragging || dragState.bookmarkTime === null) return;
 
-			const activeProject = editor.project.getActive();
+			const activeProject = project.getActive();
 			if (!activeProject) return;
 
 			const scrollLeft = scrollContainer.scrollLeft;
@@ -199,7 +199,7 @@ export function useBookmarkDrag({
 		dragState.bookmarkTime,
 		zoomLevel,
 		duration,
-		editor.project,
+		project,
 		scrollRef,
 		isPendingDrag,
 		startDrag,
@@ -222,7 +222,7 @@ export function useBookmarkDrag({
 				Math.min(dragState.currentTime, duration),
 			);
 
-			editor.scenes.moveBookmark({
+			scenes.moveBookmark({
 				fromTime: dragState.bookmarkTime,
 				toTime: clampedTime,
 			});
@@ -240,7 +240,7 @@ export function useBookmarkDrag({
 		duration,
 		endDrag,
 		onSnapPointChange,
-		editor.scenes,
+		scenes,
 	]);
 
 	useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useAssetsPanelStore } from "@/stores/assets-panel-store";
 import AudioWaveform from "./audio-waveform";
 import { useTimelineElementResize } from "@/hooks/timeline/element/use-element-resize";
@@ -31,12 +31,13 @@ import type {
 	TimelineElement as TimelineElementType,
 	TimelineTrack,
 	VisualElement,
-	ElementDragState,
 } from "@/types/timeline";
+import { useDragStore } from "@/stores/drag-store";
 import type { MediaAsset } from "@/types/assets";
 import { mediaSupportsAudio } from "@/lib/media/media-utils";
 import { getActionDefinition, type TAction, invokeAction } from "@/lib/actions";
 import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
+import { useSelectionManager } from "@/hooks/editor";
 import { resolveStickerId } from "@/lib/stickers";
 import Image from "next/image";
 import {
@@ -60,7 +61,7 @@ import { toast } from "sonner";
 import { SpeedBadge } from "./speed-badge";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { uppercase } from "@/utils/string";
-import type { ComponentProps, ReactNode } from "react";
+import { memo, type ComponentProps, type ReactNode } from "react";
 import type { SelectedKeyframeRef, ElementKeyframe } from "@/types/animation";
 import { cn } from "@/utils/ui";
 import { Button } from "@/components/ui/button";
@@ -185,11 +186,10 @@ interface TimelineElementProps {
 		event: React.MouseEvent,
 		element: TimelineElementType,
 	) => void;
-	dragState: ElementDragState;
 	isDropTarget?: boolean;
 }
 
-export function TimelineElement({
+export const TimelineElement = memo(function TimelineElement({
 	element,
 	track,
 	zoomLevel,
@@ -198,19 +198,16 @@ export function TimelineElement({
 	onResizeStateChange,
 	onElementMouseDown,
 	onElementClick,
-	dragState,
 	isDropTarget = false,
 }: TimelineElementProps) {
-	const editor = useEditor();
-	const { selectedElements } = useElementSelection();
+	const { media } = useManagers("media");
+	const selection = useSelectionManager();
 	const { requestRevealMedia } = useAssetsPanelStore();
 
 	let mediaAsset: MediaAsset | null = null;
 
 	if (hasMediaId(element)) {
-		mediaAsset =
-			editor.media.getAssets().find((asset) => asset.id === element.mediaId) ??
-			null;
+		mediaAsset = media.getAssetById(element.mediaId) ?? null;
 	}
 
 	const hasAudio = mediaSupportsAudio({ media: mediaAsset });
@@ -224,19 +221,26 @@ export function TimelineElement({
 			onResizeStateChange,
 		});
 
-	const isCurrentElementSelected = selectedElements.some(
-		(selected) =>
-			selected.elementId === element.id && selected.trackId === track.id,
+	const isBeingDragged = useDragStore(
+		(s) => s.dragState.elementId === element.id,
 	);
-
-	const isBeingDragged = dragState.elementId === element.id;
+	const dragIsDragging = useDragStore((s) =>
+		s.dragState.elementId === element.id ? s.dragState.isDragging : false,
+	);
+	const dragCurrentTime = useDragStore((s) =>
+		s.dragState.elementId === element.id ? s.dragState.currentTime : null,
+	);
+	const dragCurrentMouseY = useDragStore((s) =>
+		s.dragState.elementId === element.id ? s.dragState.currentMouseY : 0,
+	);
+	const dragStartMouseY = useDragStore((s) =>
+		s.dragState.elementId === element.id ? s.dragState.startMouseY : 0,
+	);
 	const dragOffsetY =
-		isBeingDragged && dragState.isDragging
-			? dragState.currentMouseY - dragState.startMouseY
-			: 0;
+		isBeingDragged && dragIsDragging ? dragCurrentMouseY - dragStartMouseY : 0;
 	const elementStartTime =
-		isBeingDragged && dragState.isDragging
-			? dragState.currentTime
+		isBeingDragged && dragIsDragging && dragCurrentTime !== null
+			? dragCurrentTime
 			: element.startTime;
 	const displayedStartTime = isResizing ? currentStartTime : elementStartTime;
 	const displayedDuration = isResizing ? currentDuration : element.duration;
@@ -284,7 +288,7 @@ export function TimelineElement({
 						left: `${elementLeft}px`,
 						width: `${elementWidth}px`,
 						transform:
-							isBeingDragged && dragState.isDragging
+							isBeingDragged && dragIsDragging
 								? `translate3d(0, ${dragOffsetY}px, 0)`
 								: undefined,
 					}}
@@ -314,69 +318,111 @@ export function TimelineElement({
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent className="w-64">
-				<ActionMenuItem
-					action="split"
-					icon={<HugeiconsIcon icon={ScissorIcon} />}
-				>
-					Split
-				</ActionMenuItem>
-				<CopyMenuItem />
-				{canElementHaveAudio(element) && hasAudio && (
-					<MuteMenuItem
-						isMultipleSelected={selectedElements.length > 1}
-						isCurrentElementSelected={isCurrentElementSelected}
-						isMuted={isMuted}
-					/>
-				)}
-				{element.type === "video" && hasAudio && mediaAsset && (
-					<ExtractAudioMenuItem
-						element={element}
-						track={track}
-						mediaAsset={mediaAsset}
-					/>
-				)}
-				{canElementBeHidden(element) && (
-					<VisibilityMenuItem
-						element={element}
-						isMultipleSelected={selectedElements.length > 1}
-						isCurrentElementSelected={isCurrentElementSelected}
-					/>
-				)}
-				{selectedElements.length === 1 && (
-					<ActionMenuItem
-						action="duplicate-selected"
-						icon={<HugeiconsIcon icon={Copy01Icon} />}
-					>
-						Duplicate
-					</ActionMenuItem>
-				)}
-				{selectedElements.length === 1 && hasMediaId(element) && (
-					<>
-						<ContextMenuItem
-							icon={<HugeiconsIcon icon={Search01Icon} />}
-							onClick={(event: React.MouseEvent) =>
-								handleRevealInMedia({ event })
-							}
-						>
-							Reveal media
-						</ContextMenuItem>
-						<ContextMenuItem
-							icon={<HugeiconsIcon icon={Exchange01Icon} />}
-							disabled
-						>
-							Replace media
-						</ContextMenuItem>
-					</>
-				)}
-				<ContextMenuSeparator />
-				<DeleteMenuItem
-					isMultipleSelected={selectedElements.length > 1}
-					isCurrentElementSelected={isCurrentElementSelected}
-					elementType={element.type}
-					selectedCount={selectedElements.length}
+				<ContextMenuItems
+					element={element}
+					track={track}
+					mediaAsset={mediaAsset}
+					hasAudio={hasAudio}
+					isMuted={isMuted}
+					selection={selection}
+					onRevealInMedia={handleRevealInMedia}
 				/>
 			</ContextMenuContent>
 		</ContextMenu>
+	);
+});
+
+/**
+ * Reads selection imperatively when context menu renders (on open),
+ * avoiding a reactive subscription in TimelineElement.
+ */
+function ContextMenuItems({
+	element,
+	track,
+	mediaAsset,
+	hasAudio,
+	isMuted,
+	selection,
+	onRevealInMedia,
+}: {
+	element: TimelineElementType;
+	track: TimelineTrack;
+	mediaAsset: MediaAsset | null;
+	hasAudio: boolean;
+	isMuted: boolean;
+	selection: import("@/core/managers/selection-manager").SelectionManager;
+	onRevealInMedia: (params: { event: React.MouseEvent }) => void;
+}) {
+	const selectedElements = selection.getSelectedElements();
+	const isCurrentElementSelected = selectedElements.some(
+		(selected) =>
+			selected.elementId === element.id && selected.trackId === track.id,
+	);
+
+	return (
+		<>
+			<ActionMenuItem
+				action="split"
+				icon={<HugeiconsIcon icon={ScissorIcon} />}
+			>
+				Split
+			</ActionMenuItem>
+			<CopyMenuItem />
+			{canElementHaveAudio(element) && hasAudio && (
+				<MuteMenuItem
+					isMultipleSelected={selectedElements.length > 1}
+					isCurrentElementSelected={isCurrentElementSelected}
+					isMuted={isMuted}
+				/>
+			)}
+			{element.type === "video" && hasAudio && mediaAsset && (
+				<ExtractAudioMenuItem
+					element={element}
+					track={track}
+					mediaAsset={mediaAsset}
+				/>
+			)}
+			{canElementBeHidden(element) && (
+				<VisibilityMenuItem
+					element={element}
+					isMultipleSelected={selectedElements.length > 1}
+					isCurrentElementSelected={isCurrentElementSelected}
+				/>
+			)}
+			{selectedElements.length === 1 && (
+				<ActionMenuItem
+					action="duplicate-selected"
+					icon={<HugeiconsIcon icon={Copy01Icon} />}
+				>
+					Duplicate
+				</ActionMenuItem>
+			)}
+			{selectedElements.length === 1 && hasMediaId(element) && (
+				<>
+					<ContextMenuItem
+						icon={<HugeiconsIcon icon={Search01Icon} />}
+						onClick={(event: React.MouseEvent) =>
+							onRevealInMedia({ event })
+						}
+					>
+						Reveal media
+					</ContextMenuItem>
+					<ContextMenuItem
+						icon={<HugeiconsIcon icon={Exchange01Icon} />}
+						disabled
+					>
+						Replace media
+					</ContextMenuItem>
+				</>
+			)}
+			<ContextMenuSeparator />
+			<DeleteMenuItem
+				isMultipleSelected={selectedElements.length > 1}
+				isCurrentElementSelected={isCurrentElementSelected}
+				elementType={element.type}
+				selectedCount={selectedElements.length}
+			/>
+		</>
 	);
 }
 
@@ -801,7 +847,7 @@ const ELEMENT_CONTENT_RENDERERS: Record<
 };
 
 function ElementContent({ element, track, isSelected }: ElementContentProps) {
-	const editor = useEditor();
+	const { media } = useManagers("media");
 	const renderer = ELEMENT_CONTENT_RENDERERS[element.type];
 	return (
 		<>
@@ -809,7 +855,7 @@ function ElementContent({ element, track, isSelected }: ElementContentProps) {
 				element,
 				track,
 				isSelected,
-				mediaAssets: editor.media.getAssets(),
+				mediaAssets: media.getAssets(),
 			})}
 		</>
 	);
@@ -918,7 +964,11 @@ function ExtractAudioMenuItem({
 	track: TimelineTrack;
 	mediaAsset: MediaAsset;
 }) {
-	const editor = useEditor();
+	const {
+		timeline: tl,
+		project: proj,
+		media: med,
+	} = useManagers("timeline", "project", "media");
 
 	const handleExtractAudio = async (event: React.MouseEvent) => {
 		event.stopPropagation();
@@ -943,8 +993,8 @@ function ExtractAudioMenuItem({
 			});
 
 			/* Add as media asset */
-			const projectId = editor.project.getActive().metadata.id;
-			await editor.media.addMediaAsset({
+			const projectId = proj.getActive().metadata.id;
+			await med.addMediaAsset({
 				projectId,
 				asset: {
 					name: `${nameWithoutExt} (audio)`,
@@ -955,7 +1005,7 @@ function ExtractAudioMenuItem({
 			});
 
 			/* Find the newly added audio asset (last one) */
-			const assets = editor.media.getAssets();
+			const assets = med.getAssets();
 			const audioAsset = assets[assets.length - 1];
 			if (!audioAsset) throw new Error("Failed to create audio asset");
 
@@ -974,28 +1024,31 @@ function ExtractAudioMenuItem({
 			}
 
 			/* Find the video track index to place audio track right after it */
-			const tracks = editor.timeline.getTracks();
+			const tracks = tl.getTracks();
 			const videoTrackIndex = tracks.findIndex((t) => t.id === track.id);
-			const insertIndex = videoTrackIndex >= 0 ? videoTrackIndex + 1 : tracks.length;
+			const insertIndex =
+				videoTrackIndex >= 0 ? videoTrackIndex + 1 : tracks.length;
 
 			/* Add audio track and insert element */
-			const audioTrackId = editor.timeline.addTrack({
+			const audioTrackId = tl.addTrack({
 				type: "audio",
 				index: insertIndex,
 			});
 
-			editor.timeline.insertElement({
+			tl.insertElement({
 				placement: { mode: "explicit", trackId: audioTrackId },
 				element: audioElement,
 			});
 
 			/* Mute the video element */
-			editor.timeline.updateElements({
-				updates: [{
-					trackId: track.id,
-					elementId: element.id,
-					updates: { muted: true },
-				}],
+			tl.updateElements({
+				updates: [
+					{
+						trackId: track.id,
+						elementId: element.id,
+						updates: { muted: true },
+					},
+				],
 			});
 
 			toast.success("Audio extracted successfully", { id: toastId });

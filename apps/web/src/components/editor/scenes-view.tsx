@@ -23,12 +23,12 @@ import {
 } from "@/components/ui/dialog";
 import { canDeleteScene, getMainScene } from "@/lib/scenes";
 import { toast } from "sonner";
-import { useEditor } from "@/hooks/use-editor";
+import { useScenesManager } from "@/hooks/editor";
 
 export function ScenesView({ children }: { children: React.ReactNode }) {
-	const editor = useEditor();
-	const scenes = editor.scenes.getScenes();
-	const currentScene = editor.scenes.getActiveScene();
+	const scenesManager = useScenesManager();
+	const scenes = scenesManager.getScenes();
+	const currentScene = scenesManager.getActiveScene();
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
 
@@ -39,7 +39,7 @@ export function ScenesView({ children }: { children: React.ReactNode }) {
 		}
 
 		try {
-			await editor.scenes.switchToScene({ sceneId });
+			await scenesManager.switchToScene({ sceneId });
 		} catch (error) {
 			console.error("Failed to switch scene:", error);
 		}
@@ -76,7 +76,7 @@ export function ScenesView({ children }: { children: React.ReactNode }) {
 			}
 
 			try {
-				await editor.scenes.deleteScene({ sceneId });
+				await scenesManager.deleteScene({ sceneId });
 			} catch (error) {
 				console.error("Failed to delete scene:", error);
 			}

@@ -10,7 +10,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useEditor } from "@/hooks/use-editor";
+import { usePlayback } from "@/hooks/editor";
 import { clearDragData, setDragData } from "@/lib/drag-data";
 import type { TimelineDragData } from "@/types/drag";
 import { cn } from "@/utils/ui";
@@ -51,11 +51,11 @@ export function DraggableItem({
 	const [isDragging, setIsDragging] = useState(false);
 	const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
 	const dragRef = useRef<HTMLDivElement>(null);
-	const editor = useEditor();
+	const playback = usePlayback();
 	const highlightClassName = `ring-2 ring-primary bg-primary/10 ${isRounded ? "rounded-sm" : ""}`;
 
 	const handleAddToTimeline = () => {
-		onAddToTimeline?.({ currentTime: editor.playback.getCurrentTime() });
+		onAddToTimeline?.({ currentTime: playback.getCurrentTime() });
 	};
 
 	const emptyImg = new window.Image();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useShiftKey } from "@/hooks/use-shift-key";
 import type { TextElement, TimelineElement, Transform } from "@/types/timeline";
 import type { ElementAnimations, NumberAnimationChannel } from "@/types/animation";
@@ -83,7 +83,7 @@ export function usePreviewInteraction({
 }: {
 	canvasRef: React.RefObject<HTMLCanvasElement | null>;
 }) {
-	const editor = useEditor();
+	const { playback, timeline, project, media, selection } = useManagers("playback", "timeline", "project", "media", "selection");
 	const isShiftHeldRef = useShiftKey();
 	const [isDragging, setIsDragging] = useState(false);
 	const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
@@ -94,14 +94,14 @@ export function usePreviewInteraction({
 		originalOpacity: number;
 	} | null>(null);
 	const dragStateRef = useRef<DragState | null>(null);
-	const wasPlayingRef = useRef(editor.playback.getIsPlaying());
+	const wasPlayingRef = useRef(playback.getIsPlaying());
 	const editingTextRef = useRef(editingText);
 	editingTextRef.current = editingText;
 
 	const commitTextEdit = useCallback(() => {
 		const current = editingTextRef.current;
 		if (!current) return;
-		editor.timeline.previewElements({
+		timeline.previewElements({
 			updates: [
 				{
 					trackId: current.trackId,
@@ -110,34 +110,34 @@ export function usePreviewInteraction({
 				},
 			],
 		});
-		editor.timeline.commitPreview();
+		timeline.commitPreview();
 		setEditingText(null);
-	}, [editor.timeline]);
+	}, [timeline]);
 
 	const cancelTextEdit = useCallback(() => {
-		editor.timeline.discardPreview();
+		timeline.discardPreview();
 		setEditingText(null);
-	}, [editor.timeline]);
+	}, [timeline]);
 
 	useEffect(() => {
-		const unsubscribe = editor.playback.subscribe(() => {
-			const isPlaying = editor.playback.getIsPlaying();
+		const unsubscribe = playback.subscribe(() => {
+			const isPlaying = playback.getIsPlaying();
 			if (isPlaying && !wasPlayingRef.current && editingTextRef.current) {
 				commitTextEdit();
 			}
 			wasPlayingRef.current = isPlaying;
 		});
 		return unsubscribe;
-	}, [editor.playback, commitTextEdit]);
+	}, [playback, commitTextEdit]);
 
 	const handleDoubleClick = useCallback(
 		({ clientX, clientY }: React.MouseEvent) => {
 			if (!canvasRef.current || editingText) return;
 
-			const tracks = editor.timeline.getTracks();
-			const currentTime = editor.playback.getCurrentTime();
-			const mediaAssets = editor.media.getAssets();
-			const canvasSize = editor.project.getActive().settings.canvasSize;
+			const tracks = timeline.getTracks();
+			const currentTime = playback.getCurrentTime();
+			const mediaAssets = media.getAssets();
+			const canvasSize = project.getActive().settings.canvasSize;
 
 			const startPos = screenToCanvas({
 				clientX,
@@ -161,7 +161,7 @@ export function usePreviewInteraction({
 			if (!hit || hit.element.type !== "text") return;
 
 			const textElement = hit.element as TextElement;
-			editor.timeline.previewElements({
+			timeline.previewElements({
 				updates: [
 					{
 						trackId: hit.trackId,
@@ -177,7 +177,7 @@ export function usePreviewInteraction({
 				originalOpacity: textElement.opacity,
 			});
 		},
-		[canvasRef, editor, editingText],
+		[canvasRef, timeline, playback, media, project, editingText],
 	);
 
 	const handlePointerDown = useCallback(
@@ -192,10 +192,10 @@ export function usePreviewInteraction({
 			if (editingText) return;
 			if (button !== 0) return;
 
-			const tracks = editor.timeline.getTracks();
-			const currentTime = editor.playback.getCurrentTime();
-			const mediaAssets = editor.media.getAssets();
-			const canvasSize = editor.project.getActive().settings.canvasSize;
+			const tracks = timeline.getTracks();
+			const currentTime = playback.getCurrentTime();
+			const mediaAssets = media.getAssets();
+			const canvasSize = project.getActive().settings.canvasSize;
 
 			const startPos = screenToCanvas({
 				clientX,
@@ -217,15 +217,15 @@ export function usePreviewInteraction({
 			});
 
 			if (!hit) {
-				editor.selection.clearSelection();
+				selection.clearSelection();
 				return;
 			}
 
-			editor.selection.setSelectedElements({
+			selection.setSelectedElements({
 				elements: [{ trackId: hit.trackId, elementId: hit.elementId }],
 			});
 
-			const elementsWithTracks = editor.timeline.getElementsWithTracks({
+			const elementsWithTracks = timeline.getElementsWithTracks({
 				elements: [{ trackId: hit.trackId, elementId: hit.elementId }],
 			});
 
@@ -253,14 +253,14 @@ export function usePreviewInteraction({
 			setIsDragging(true);
 			currentTarget.setPointerCapture(pointerId);
 		},
-		[editor, canvasRef, editingText],
+		[timeline, playback, media, project, selection, canvasRef, editingText],
 	);
 
 	const handlePointerMove = useCallback(
 		({ clientX, clientY }: React.PointerEvent) => {
 			if (!dragStateRef.current || !isDragging || !canvasRef.current) return;
 
-			const canvasSize = editor.project.getActive().settings.canvasSize;
+			const canvasSize = project.getActive().settings.canvasSize;
 
 			const currentPos = screenToCanvas({
 				clientX,
@@ -336,9 +336,9 @@ export function usePreviewInteraction({
 				},
 			);
 
-			editor.timeline.previewElements({ updates });
+			timeline.previewElements({ updates });
 		},
-		[isDragging, canvasRef, editor, isShiftHeldRef],
+		[isDragging, canvasRef, project, timeline, isShiftHeldRef],
 	);
 
 	const handlePointerUp = useCallback(
@@ -359,9 +359,9 @@ export function usePreviewInteraction({
 				Math.abs(deltaY) > MIN_DRAG_DISTANCE;
 
 			if (!hasMovement) {
-				editor.timeline.discardPreview();
+				timeline.discardPreview();
 			} else {
-				editor.timeline.commitPreview();
+				timeline.commitPreview();
 			}
 
 			dragStateRef.current = null;
@@ -369,7 +369,7 @@ export function usePreviewInteraction({
 			setSnapLines([]);
 			currentTarget.releasePointerCapture(pointerId);
 		},
-		[isDragging, canvasRef, editor],
+		[isDragging, canvasRef, timeline],
 	);
 
 	return {

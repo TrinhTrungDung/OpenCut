@@ -1,4 +1,4 @@
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import {
 	TooltipProvider,
 	Tooltip,
@@ -21,6 +21,7 @@ import { type TAction, invokeAction } from "@/lib/actions";
 import { cn } from "@/utils/ui";
 import { useTimelineStore } from "@/stores/timeline-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { BeatSyncButton } from "./beat-sync-button";
 import {
 	Bookmark02Icon,
 	Delete02Icon,
@@ -76,9 +77,9 @@ export function TimelineToolbar({
 }
 
 function ToolbarLeftSection() {
-	const editor = useEditor();
-	const currentTime = editor.playback.getCurrentTime();
-	const isCurrentlyBookmarked = editor.scenes.isBookmarked({ time: currentTime });
+	const { playback, scenes } = useManagers("playback", "scenes");
+	const currentTime = playback.getCurrentTime();
+	const isCurrentlyBookmarked = scenes.isBookmarked({ time: currentTime });
 
 	const handleAction = ({
 		action,
@@ -156,14 +157,17 @@ function ToolbarLeftSection() {
 						}
 					/>
 				</Tooltip>
+
+				<div className="bg-border mx-1 h-6 w-px" />
+				<BeatSyncButton />
 			</TooltipProvider>
 		</div>
 	);
 }
 
 function SceneSelector() {
-	const editor = useEditor();
-	const currentScene = editor.scenes.getActiveScene();
+	const { scenes } = useManagers("scenes");
+	const currentScene = scenes.getActiveScene();
 
 	return (
 		<div>

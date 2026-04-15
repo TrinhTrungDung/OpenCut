@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { EditorCore } from "@/core";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import type { BookmarkDragState } from "@/hooks/timeline/use-bookmark-drag";
 import { BOOKMARK_TIME_EPSILON } from "@/lib/timeline/bookmarks";
 import { DEFAULT_BOOKMARK_COLOR } from "@/constants/timeline-constants";
@@ -72,8 +73,8 @@ export function TimelineBookmarksRow({
 	handleRulerTrackingMouseDown,
 	handleRulerMouseDown,
 }: TimelineBookmarksRowProps) {
-	const editor = useEditor();
-	const activeScene = editor.scenes.getActiveScene();
+	const { scenes } = useManagers("scenes");
+	const activeScene = scenes.getActiveScene();
 
 	return (
 		<div className="relative h-4 flex-1 overflow-hidden">
@@ -123,8 +124,9 @@ function TimelineBookmark({
 		bookmark: Bookmark;
 	}) => void;
 }) {
-	const editor = useEditor();
-	const duration = editor.timeline.getTotalDuration();
+	const { timeline } = useManagers("timeline");
+	const editor = useEditorCore();
+	const duration = timeline.getTotalDuration();
 	const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
 	const isDragging =
@@ -287,7 +289,7 @@ function BookmarkPopoverContent({
 	timelineDuration: number;
 	onPopoverClose: () => void;
 }) {
-	const editor = useEditor();
+	const { scenes } = useManagers("scenes");
 	const [draftColorHex, setDraftColorHex] = useState(
 		(bookmark.color ?? DEFAULT_BOOKMARK_COLOR).replace("#", "").toUpperCase(),
 	);
@@ -299,7 +301,7 @@ function BookmarkPopoverContent({
 	}, [bookmark.color]);
 
 	const handleRemove = () => {
-		editor.scenes.removeBookmark({ time });
+		scenes.removeBookmark({ time });
 		onPopoverClose();
 	};
 
@@ -321,7 +323,7 @@ function BookmarkPopoverContent({
 			updates.duration = duration;
 		}
 		if (Object.keys(updates).length === 0) return;
-		editor.scenes.updateBookmark({ time, updates });
+		scenes.updateBookmark({ time, updates });
 	};
 
 	return (
@@ -356,7 +358,7 @@ function BookmarkPopoverContent({
 								aria-label="Reset to default color"
 								className="absolute top-1/2 right-1 -translate-y-1/2 mr-1"
 								onClick={() =>
-									editor.scenes.updateBookmark({
+									scenes.updateBookmark({
 										time,
 										updates: { color: undefined },
 									})

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
 import { useShiftKey } from "@/hooks/use-shift-key";
 import {
 	getVisibleElementsWithBounds,
@@ -106,7 +106,7 @@ export function useTransformHandles({
 }: {
 	canvasRef: React.RefObject<HTMLCanvasElement | null>;
 }) {
-	const editor = useEditor();
+	const { playback, timeline, project, media, selection } = useManagers("playback", "timeline", "project", "media", "selection");
 	const isShiftHeldRef = useShiftKey();
 	const [activeHandle, setActiveHandle] = useState<HandleType | null>(null);
 	const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
@@ -115,16 +115,16 @@ export function useTransformHandles({
 	const rotationStateRef = useRef<RotationState | null>(null);
 
 	const selectedElements = useSyncExternalStore(
-		(listener) => editor.selection.subscribe(listener),
-		() => editor.selection.getSelectedElements(),
+		(listener) => selection.subscribe(listener),
+		() => selection.getSelectedElements(),
 	);
 
-	const tracks = editor.timeline.getTracks();
-	const currentTime = editor.playback.getCurrentTime();
+	const tracks = timeline.getTracks();
+	const currentTime = playback.getCurrentTime();
 	const currentTimeRef = useRef(currentTime);
 	currentTimeRef.current = currentTime;
-	const mediaAssets = editor.media.getAssets();
-	const canvasSize = editor.project.getActive().settings.canvasSize;
+	const mediaAssets = media.getAssets();
+	const canvasSize = project.getActive().settings.canvasSize;
 
 	const elementsWithBounds = getVisibleElementsWithBounds({
 		tracks,
@@ -275,7 +275,7 @@ export function useTransformHandles({
 					initialTransform.scale * scaleFactor,
 				);
 
-				const canvasSize = editor.project.getActive().settings.canvasSize;
+				const canvasSize = project.getActive().settings.canvasSize;
 				const snapThreshold = screenPixelsToLogicalThreshold({
 					canvas: canvasRef.current,
 					screenPixels: SNAP_THRESHOLD_SCREEN_PIXELS,
@@ -312,7 +312,7 @@ export function useTransformHandles({
 					updates.animations = animationsWithoutScale;
 				}
 
-				editor.timeline.previewElements({
+				timeline.previewElements({
 					updates: [
 						{
 							trackId,
@@ -346,7 +346,7 @@ export function useTransformHandles({
 					? snapRotation({ proposedRotation: newRotate })
 					: { snappedRotation: newRotate };
 
-				editor.timeline.previewElements({
+				timeline.previewElements({
 					updates: [
 						{
 							trackId,
@@ -359,13 +359,13 @@ export function useTransformHandles({
 				});
 			}
 		},
-		[activeHandle, canvasRef, editor, isShiftHeldRef],
+		[activeHandle, canvasRef, project, timeline, isShiftHeldRef],
 	);
 
 	const handlePointerUp = useCallback(
 		({ event }: { event: React.PointerEvent }) => {
 			if (scaleStateRef.current || rotationStateRef.current) {
-				editor.timeline.commitPreview();
+				timeline.commitPreview();
 				scaleStateRef.current = null;
 				rotationStateRef.current = null;
 				setActiveHandle(null);
@@ -376,7 +376,7 @@ export function useTransformHandles({
 				event.pointerId,
 			);
 		},
-		[editor],
+		[timeline],
 	);
 
 	return {

@@ -7,7 +7,7 @@ import { TextProperties } from "./text-properties";
 import { EffectProperties } from "./effect-properties";
 import { ClipEffectsProperties } from "./clip-effects-properties";
 import { EmptyView } from "./empty-view";
-import { useEditor } from "@/hooks/use-editor";
+import { useTimeline } from "@/hooks/editor";
 import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
 import { usePropertiesStore } from "@/stores/properties-store";
 import { isVisualElement } from "@/lib/timeline";
@@ -40,14 +40,14 @@ function ElementProperties({
 }
 
 export function PropertiesPanel() {
-	const editor = useEditor();
+	const timeline = useTimeline();
 	const { selectedElements } = useElementSelection();
 	const clipEffectsTarget = usePropertiesStore(
 		(state) => state.clipEffectsTarget,
 	);
 
 	const clipEffectsTrack = clipEffectsTarget
-		? editor.timeline.getTrackById({ trackId: clipEffectsTarget.trackId })
+		? timeline.getTrackById({ trackId: clipEffectsTarget.trackId })
 		: null;
 	const clipEffectsElement = clipEffectsTrack?.elements.find(
 		(element) => element.id === clipEffectsTarget?.elementId,
@@ -57,7 +57,7 @@ export function PropertiesPanel() {
 		clipEffectsElement &&
 		isVisualElement(clipEffectsElement);
 
-	const elementsWithTracks = editor.timeline.getElementsWithTracks({
+	const elementsWithTracks = timeline.getElementsWithTracks({
 		elements: selectedElements,
 	});
 

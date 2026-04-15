@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { useEditor } from "@/hooks/use-editor";
+import { useManagers } from "@/hooks/editor";
+import { useEditorCore } from "@/hooks/use-editor-core";
 import { processMediaAssets } from "@/lib/media/processing";
 import { buildElementFromMedia } from "@/lib/timeline/element-utils";
 import { AddMediaAssetCommand } from "@/lib/commands/media";
@@ -35,7 +36,8 @@ function extractMediaFilesFromClipboard({
 }
 
 export function usePasteMedia() {
-	const editor = useEditor();
+	const { playback, project } = useManagers("playback", "project");
+	const editor = useEditorCore();
 
 	useEffect(() => {
 		const handlePaste = async (event: ClipboardEvent) => {
@@ -51,12 +53,12 @@ export function usePasteMedia() {
 
 			event.preventDefault();
 
-			const activeProject = editor.project.getActive();
+			const activeProject = project.getActive();
 			if (!activeProject) return;
 
 			try {
 				const processedAssets = await processMediaAssets({ files });
-				const startTime = editor.playback.getCurrentTime();
+				const startTime = playback.getCurrentTime();
 
 				for (const asset of processedAssets) {
 					const addMediaCmd = new AddMediaAssetCommand(
@@ -95,5 +97,5 @@ export function usePasteMedia() {
 
 		window.addEventListener("paste", handlePaste);
 		return () => window.removeEventListener("paste", handlePaste);
-	}, [editor]);
+	}, [playback, project, editor]);
 }

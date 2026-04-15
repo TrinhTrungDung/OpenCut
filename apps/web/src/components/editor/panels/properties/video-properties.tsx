@@ -6,6 +6,7 @@ import type {
 import { BlendingSection, TransformSection } from "./sections";
 import { SpeedSection } from "./sections/speed";
 import { ColorCorrectionSection } from "./sections/color-correction";
+import { AudioEffectsSection } from "./sections/audio-effects";
 
 export function VideoProperties({
 	element,
@@ -27,6 +28,13 @@ export function VideoProperties({
 			)}
 			{(element.type === "video" || element.type === "image") && (
 				<ColorCorrectionSection element={element} trackId={trackId} />
+			)}
+			{element.type === "video" && (
+				<AudioEffectsSection
+					trackId={trackId}
+					elementId={element.id}
+					audioEffects={element.audioEffects}
+				/>
 			)}
 		</div>
 	);

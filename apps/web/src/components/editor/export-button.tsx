@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/utils/ui";
 import { getExportMimeType, getExportFileExtension, downloadBuffer } from "@/lib/export";
-import { Check, Copy, Download, RotateCcw } from "lucide-react";
+import { Check, Copy, Download, RotateCcw, Cpu, Zap } from "lucide-react";
 import {
 	EXPORT_FORMAT_VALUES,
 	EXPORT_QUALITY_VALUES,
@@ -28,7 +28,7 @@ import {
 	SectionHeader,
 	SectionTitle,
 } from "@/components/editor/panels/properties/section";
-import { useEditor } from "@/hooks/use-editor";
+import { useProject, useRendererManager } from "@/hooks/editor";
 import { DEFAULT_EXPORT_OPTIONS } from "@/constants/export-constants";
 
 function isExportFormat(value: string): value is ExportFormat {
@@ -41,14 +41,14 @@ function isExportQuality(value: string): value is ExportQuality {
 
 export function ExportButton() {
 	const [isExportPopoverOpen, setIsExportPopoverOpen] = useState(false);
-	const editor = useEditor();
+	const project = useProject();
 
-	const hasProject = !!editor.project.getActiveOrNull();
+	const hasProject = !!project.getActiveOrNull();
 
 	const handlePopoverOpenChange = ({ open }: { open: boolean }) => {
 		if (!open) {
-			editor.project.cancelExport();
-			editor.project.clearExportState();
+			project.cancelExport();
+			project.clearExportState();
 		}
 		setIsExportPopoverOpen(open);
 	};
@@ -90,10 +90,12 @@ function ExportPopover({
 }: {
 	onOpenChange: (open: boolean) => void;
 }) {
-	const editor = useEditor();
-	const activeProject = editor.project.getActive();
+	const project = useProject();
+	const renderer = useRendererManager();
+	const activeProject = project.getActive();
 	const { isExporting, progress, result: exportResult } =
-		editor.project.getExportState();
+		project.getExportState();
+	const codecInfo = renderer.getCodecInfo();
 	const [format, setFormat] = useState<ExportFormat>(
 		DEFAULT_EXPORT_OPTIONS.format,
 	);
@@ -107,7 +109,7 @@ function ExportPopover({
 	const handleExport = async () => {
 		if (!activeProject) return;
 
-		const result = await editor.project.export({
+		const result = await project.export({
 			options: {
 			format,
 			quality,
@@ -117,7 +119,7 @@ function ExportPopover({
 		});
 
 		if (result.cancelled) {
-			editor.project.clearExportState();
+			project.clearExportState();
 			return;
 		}
 
@@ -128,13 +130,13 @@ function ExportPopover({
 				mimeType: getExportMimeType({ format }),
 			});
 
-			editor.project.clearExportState();
+			project.clearExportState();
 			onOpenChange(false);
 		}
 	};
 
 	const handleCancel = () => {
-		editor.project.cancelExport();
+		project.cancelExport();
 	};
 
 	return (
@@ -261,6 +263,25 @@ function ExportPopover({
 								</div>
 								<Progress value={progress * 100} className="w-full" />
 							</div>
+
+								{codecInfo && (
+									<div className="flex items-center gap-1.5">
+										{codecInfo.hardwareAcceleration ? (
+											<span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[0.7rem] text-green-500">
+												<Zap className="size-3" />
+												GPU accelerated
+											</span>
+										) : codecInfo.supported ? (
+											<span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[0.7rem] text-blue-500">
+												<Cpu className="size-3" />
+												Software encoding
+											</span>
+										) : null}
+										<span className="text-muted-foreground text-[0.7rem]">
+											Exporting in background
+										</span>
+									</div>
+								)}
 
 								<Button
 									variant="outline"

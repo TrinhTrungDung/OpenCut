@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor } from "@/hooks/use-editor";
+import { useProject } from "@/hooks/editor";
 import type { SnapLine } from "@/lib/preview/preview-snap";
 import { positionToOverlay } from "@/lib/preview/preview-coords";
 
@@ -13,8 +13,8 @@ export function SnapGuides({
 	canvasRef: React.RefObject<HTMLCanvasElement | null>;
 	containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
-	const editor = useEditor();
-	const canvasSize = editor.project.getActive().settings.canvasSize;
+	const project = useProject();
+	const canvasSize = project.getActive().settings.canvasSize;
 	const canvasRect = canvasRef.current?.getBoundingClientRect();
 	const containerRect = containerRef.current?.getBoundingClientRect();
 
