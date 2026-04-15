@@ -30,6 +30,7 @@ import {
 	generateFadeInKeyframes,
 	generateFadeOutKeyframes,
 } from "@/lib/audio";
+import { AudioEffectsSection } from "./sections/audio-effects";
 
 const DEFAULT_VOLUME = 1;
 
@@ -200,6 +201,12 @@ function AudioPropertiesInner({
 					</div>
 				</SectionContent>
 			</Section>
+
+			<AudioEffectsSection
+				trackId={trackId}
+				elementId={element.id}
+				audioEffects={element.audioEffects}
+			/>
 		</div>
 	);
 }

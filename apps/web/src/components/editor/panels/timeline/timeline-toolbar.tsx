@@ -21,6 +21,7 @@ import { type TAction, invokeAction } from "@/lib/actions";
 import { cn } from "@/utils/ui";
 import { useTimelineStore } from "@/stores/timeline-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { BeatSyncButton } from "./beat-sync-button";
 import {
 	Bookmark02Icon,
 	Delete02Icon,
@@ -156,6 +157,9 @@ function ToolbarLeftSection() {
 						}
 					/>
 				</Tooltip>
+
+				<div className="bg-border mx-1 h-6 w-px" />
+				<BeatSyncButton />
 			</TooltipProvider>
 		</div>
 	);

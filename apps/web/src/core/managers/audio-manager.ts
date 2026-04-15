@@ -9,6 +9,16 @@ import {
 	Input,
 	type WrappedAudioBuffer,
 } from "mediabunny";
+import {
+	type AudioEffectChain,
+	createAudioEffectChain,
+} from "@/lib/audio/audio-effect-chain";
+import {
+	type MasterAudioEffects,
+	DEFAULT_AUDIO_EFFECTS,
+	DEFAULT_MASTER_AUDIO_EFFECTS,
+} from "@/lib/audio/audio-effects-config";
+import { useEditorStore } from "@/stores/editor-store";
 
 export class AudioManager {
 	private audioContext: AudioContext | null = null;
@@ -37,6 +47,19 @@ export class AudioManager {
 	private timelineChangeTimer: number | null = null;
 	private unsubscribers: Array<() => void> = [];
 
+	/* Per-clip audio effect chains */
+	private clipEffectChains = new Map<string, AudioEffectChain>();
+
+	/* Master audio effect nodes */
+	private masterCompressor: DynamicsCompressorNode | null = null;
+	private masterAnalyser: AnalyserNode | null = null;
+	private masterReverbDry: GainNode | null = null;
+	private masterReverbWet: GainNode | null = null;
+	private masterConvolver: ConvolverNode | null = null;
+	private lastMasterEffects: MasterAudioEffects = {
+		...DEFAULT_MASTER_AUDIO_EFFECTS,
+	};
+
 	constructor(private editor: EditorCore) {
 		this.lastVolume = this.editor.playback.getVolume();
 
@@ -48,6 +71,16 @@ export class AudioManager {
 		if (typeof window !== "undefined") {
 			window.addEventListener("playback-seek", this.handleSeek);
 		}
+
+		/* Subscribe to master audio effect changes from editor store */
+		this.unsubscribers.push(
+			useEditorStore.subscribe((state) => {
+				const effects = state.masterAudioEffects;
+				if (effects !== this.lastMasterEffects) {
+					this.applyMasterEffects(effects);
+				}
+			}),
+		);
 	}
 
 	dispose(): void {
@@ -68,6 +101,11 @@ export class AudioManager {
 			void this.audioContext.close();
 			this.audioContext = null;
 			this.masterGain = null;
+			this.masterCompressor = null;
+			this.masterAnalyser = null;
+			this.masterReverbDry = null;
+			this.masterReverbWet = null;
+			this.masterConvolver = null;
 		}
 	}
 
@@ -228,14 +266,98 @@ export class AudioManager {
 		if (typeof window === "undefined") return null;
 
 		/* Use default sample rate — Web Audio API handles resampling automatically */
-		this.audioContext = createAudioContext();
-		this.masterGain = this.audioContext.createGain();
+		const ctx = createAudioContext();
+		this.audioContext = ctx;
+
+		this.masterGain = ctx.createGain();
 		this.masterGain.gain.value = this.lastVolume;
-		this.masterGain.connect(this.audioContext.destination);
+
+		/* Master effect chain: masterGain -> compressor -> reverb dry/wet -> analyser -> destination */
+		this.masterCompressor = ctx.createDynamicsCompressor();
+		this.masterAnalyser = ctx.createAnalyser();
+		this.masterAnalyser.fftSize = 256;
+		this.masterAnalyser.smoothingTimeConstant = 0.8;
+
+		/* Reverb: parallel dry + wet (convolver) paths merged before analyser */
+		this.masterReverbDry = ctx.createGain();
+		this.masterReverbDry.gain.value = 1;
+		this.masterReverbWet = ctx.createGain();
+		this.masterReverbWet.gain.value = 0; /* disabled by default */
+		this.masterConvolver = ctx.createConvolver();
+
+		/* Wire master chain */
+		this.masterGain.connect(this.masterCompressor);
+		this.masterCompressor.connect(this.masterReverbDry);
+		this.masterCompressor.connect(this.masterConvolver);
+		this.masterConvolver.connect(this.masterReverbWet);
+		this.masterReverbDry.connect(this.masterAnalyser);
+		this.masterReverbWet.connect(this.masterAnalyser);
+		this.masterAnalyser.connect(ctx.destination);
+
+		/* Generate a simple impulse response for reverb (small hall, ~0.5s) */
+		this.generateImpulseResponse(ctx);
+
+		/* Apply current master effects state */
+		const currentEffects = useEditorStore.getState().masterAudioEffects;
+		this.applyMasterEffects(currentEffects);
 
 		/* Log sample rate for debugging audio clicking issues */
-		console.debug(`[AudioManager] AudioContext sampleRate: ${this.audioContext.sampleRate}`);
-		return this.audioContext;
+		console.debug(`[AudioManager] AudioContext sampleRate: ${ctx.sampleRate}`);
+		return ctx;
+	}
+
+	/** Generate a synthetic impulse response for the convolver reverb. */
+	private generateImpulseResponse(ctx: AudioContext): void {
+		const sampleRate = ctx.sampleRate;
+		const length = Math.floor(sampleRate * 0.5); /* 0.5 second reverb tail */
+		const impulse = ctx.createBuffer(2, length, sampleRate);
+
+		for (let channel = 0; channel < 2; channel++) {
+			const data = impulse.getChannelData(channel);
+			for (let i = 0; i < length; i++) {
+				/* Exponential decay with random noise */
+				data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 2;
+			}
+		}
+
+		if (this.masterConvolver) {
+			this.masterConvolver.buffer = impulse;
+		}
+	}
+
+	/** Apply master effect parameter changes to the audio nodes. */
+	private applyMasterEffects(effects: MasterAudioEffects): void {
+		this.lastMasterEffects = effects;
+
+		if (this.masterCompressor) {
+			if (effects.compressorEnabled) {
+				this.masterCompressor.threshold.value = effects.compressorThreshold;
+				this.masterCompressor.ratio.value = effects.compressorRatio;
+				this.masterCompressor.attack.value = effects.compressorAttack;
+				this.masterCompressor.release.value = effects.compressorRelease;
+			} else {
+				/* Bypass: set ratio to 1 (no compression) */
+				this.masterCompressor.threshold.value = 0;
+				this.masterCompressor.ratio.value = 1;
+				this.masterCompressor.attack.value = 0.003;
+				this.masterCompressor.release.value = 0.25;
+			}
+		}
+
+		if (this.masterReverbDry && this.masterReverbWet) {
+			if (effects.reverbEnabled) {
+				this.masterReverbDry.gain.value = 1 - effects.reverbMix;
+				this.masterReverbWet.gain.value = effects.reverbMix;
+			} else {
+				this.masterReverbDry.gain.value = 1;
+				this.masterReverbWet.gain.value = 0;
+			}
+		}
+	}
+
+	/** Public accessor for the AnalyserNode (used by visualization components). */
+	getAnalyserNode(): AnalyserNode | null {
+		return this.masterAnalyser;
 	}
 
 	private updateGain(): void {
@@ -253,7 +375,13 @@ export class AudioManager {
 		let gain = this.clipGains.get(clipId);
 		if (!gain) {
 			gain = audioContext.createGain();
-			gain.connect(this.masterGain ?? audioContext.destination);
+
+			/* Create per-clip effect chain: gain -> effectChain -> masterGain */
+			const chain = createAudioEffectChain(audioContext);
+			gain.connect(chain.input);
+			chain.output.connect(this.masterGain ?? audioContext.destination);
+			this.clipEffectChains.set(clipId, chain);
+
 			this.clipGains.set(clipId, gain);
 		}
 		return gain;
@@ -346,6 +474,11 @@ export class AudioManager {
 		this.queuedSources.clear();
 		this.sourceClipIds.clear();
 
+		for (const chain of this.clipEffectChains.values()) {
+			chain.dispose();
+		}
+		this.clipEffectChains.clear();
+
 		for (const gain of this.clipGains.values()) {
 			gain.disconnect();
 		}
@@ -391,6 +524,14 @@ export class AudioManager {
 			clipId: clip.id,
 			audioContext,
 		});
+
+		/* Apply per-clip audio effects from timeline element data */
+		const chain = this.clipEffectChains.get(clip.id);
+		if (chain && clip.audioEffects) {
+			chain.update(clip.audioEffects);
+		} else if (chain) {
+			chain.update(DEFAULT_AUDIO_EFFECTS);
+		}
 
 		for await (const { buffer, timestamp } of iterator) {
 			if (!this.editor.playback.getIsPlaying()) return;
@@ -514,6 +655,11 @@ export class AudioManager {
 		}
 		this.clipIterators.clear();
 		this.activeClipIds.clear();
+
+		for (const chain of this.clipEffectChains.values()) {
+			chain.dispose();
+		}
+		this.clipEffectChains.clear();
 
 		for (const gain of this.clipGains.values()) {
 			gain.disconnect();
