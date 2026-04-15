@@ -263,10 +263,23 @@ export function useElementInteraction({
 		[snappingEnabled, editor.playback, tracks, zoomLevel, isShiftHeldRef],
 	);
 
+	// RAF-coalesced pointer coords. Mice fire mousemove 100-500x/sec; we want
+	// at most one React re-render per animation frame during drag.
+	const pendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(
+		null,
+	);
+	const rafHandleRef = useRef<number | null>(null);
+
 	useEffect(() => {
 		if (!dragState.isDragging && !isPendingDrag) return;
 
-		const handleMouseMove = ({ clientX, clientY }: MouseEvent) => {
+		const processPointer = ({
+			clientX,
+			clientY,
+		}: {
+			clientX: number;
+			clientY: number;
+		}) => {
 			let startedDragThisEvent = false;
 			const timeline = timelineRef.current;
 			const scrollContainer = tracksScrollRef.current;
@@ -375,8 +388,26 @@ export function useElementInteraction({
 			}
 		};
 
+		const handleMouseMove = ({ clientX, clientY }: MouseEvent) => {
+			pendingPointerRef.current = { clientX, clientY };
+			if (rafHandleRef.current != null) return;
+			rafHandleRef.current = requestAnimationFrame(() => {
+				rafHandleRef.current = null;
+				const coords = pendingPointerRef.current;
+				pendingPointerRef.current = null;
+				if (coords) processPointer(coords);
+			});
+		};
+
 		document.addEventListener("mousemove", handleMouseMove);
-		return () => document.removeEventListener("mousemove", handleMouseMove);
+		return () => {
+			document.removeEventListener("mousemove", handleMouseMove);
+			if (rafHandleRef.current != null) {
+				cancelAnimationFrame(rafHandleRef.current);
+				rafHandleRef.current = null;
+			}
+			pendingPointerRef.current = null;
+		};
 	}, [
 		dragState.isDragging,
 		dragState.clickOffsetTime,

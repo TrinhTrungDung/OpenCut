@@ -53,20 +53,30 @@ export class EffectLayerNode extends BaseNode<EffectLayerNodeParams> {
 			effectType: this.params.effectType,
 		});
 
-		const passes = effectDefinition.renderer.passes.map((pass) => ({
-			fragmentShader: pass.fragmentShader,
-			uniforms: pass.uniforms({
-				effectParams: this.params.effectParams,
+		let effectResult: CanvasImageSource;
+		if (effectDefinition.renderer.type === "custom") {
+			effectResult = await effectDefinition.renderer.process({
+				source,
 				width: renderer.width,
 				height: renderer.height,
-			}),
-		}));
-		const effectResult = webglEffectRenderer.applyEffect({
-			source,
-			width: renderer.width,
-			height: renderer.height,
-			passes,
-		});
+				effectParams: this.params.effectParams,
+			});
+		} else {
+			const passes = effectDefinition.renderer.passes.map((pass) => ({
+				fragmentShader: pass.fragmentShader,
+				uniforms: pass.uniforms({
+					effectParams: this.params.effectParams,
+					width: renderer.width,
+					height: renderer.height,
+				}),
+			}));
+			effectResult = webglEffectRenderer.applyEffect({
+				source,
+				width: renderer.width,
+				height: renderer.height,
+				passes,
+			});
+		}
 
 		renderer.context.save();
 		renderer.context.clearRect(0, 0, renderer.width, renderer.height);

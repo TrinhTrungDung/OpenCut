@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useElementSelection } from "@/hooks/timeline/element/use-element-selection";
 import { TimelineElement } from "./timeline-element";
 import { TransitionOverlay } from "./transition-overlay";
@@ -12,7 +12,16 @@ import { TIMELINE_CONSTANTS } from "@/constants/timeline-constants";
 import { useEdgeAutoScroll } from "@/hooks/timeline/use-edge-auto-scroll";
 import type { ElementDragState } from "@/types/timeline";
 import { useEditor } from "@/hooks/use-editor";
-import { getTrackHeight, timelineTimeToSnappedPixels } from "@/lib/timeline";
+import {
+	getTrackHeight,
+	timelineTimeToPixels,
+	timelineTimeToSnappedPixels,
+} from "@/lib/timeline";
+
+// Off-screen elements still paint if included in the DOM. Cull anything
+// outside the scroll viewport, but keep a generous buffer on each side so
+// scroll-in is seamless and the dragged element stays mounted.
+const VIEWPORT_CULL_BUFFER_PX = 600;
 
 interface TimelineTrackContentProps {
 	track: TimelineTrack;
@@ -67,6 +76,56 @@ export function TimelineTrackContent({
 		tracksScrollRef,
 		contentWidth: duration * TIMELINE_CONSTANTS.PIXELS_PER_SECOND * zoomLevel,
 	});
+
+	const [viewport, setViewport] = useState<{
+		scrollLeft: number;
+		width: number;
+	} | null>(null);
+
+	useEffect(() => {
+		const scrollEl = tracksScrollRef.current;
+		if (!scrollEl) return;
+
+		let rafHandle: number | null = null;
+		const readViewport = () => {
+			rafHandle = null;
+			setViewport((prev) => {
+				const next = {
+					scrollLeft: scrollEl.scrollLeft,
+					width: scrollEl.clientWidth,
+				};
+				if (
+					prev &&
+					prev.scrollLeft === next.scrollLeft &&
+					prev.width === next.width
+				) {
+					return prev;
+				}
+				return next;
+			});
+		};
+
+		readViewport();
+
+		const handleScroll = () => {
+			if (rafHandle != null) return;
+			rafHandle = requestAnimationFrame(readViewport);
+		};
+
+		scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+
+		let resizeObserver: ResizeObserver | null = null;
+		if (typeof ResizeObserver !== "undefined") {
+			resizeObserver = new ResizeObserver(handleScroll);
+			resizeObserver.observe(scrollEl);
+		}
+
+		return () => {
+			scrollEl.removeEventListener("scroll", handleScroll);
+			resizeObserver?.disconnect();
+			if (rafHandle != null) cancelAnimationFrame(rafHandle);
+		};
+	}, [tracksScrollRef]);
 
 	const transitions =
 		track.type === "video"
@@ -131,6 +190,25 @@ export function TimelineTrackContent({
 								trackId: track.id,
 								elementId: element.id,
 							});
+
+							if (viewport && element.id !== dragState.elementId) {
+								const left = timelineTimeToSnappedPixels({
+									time: element.startTime,
+									zoomLevel,
+								});
+								const width = timelineTimeToPixels({
+									time: element.duration,
+									zoomLevel,
+								});
+								const minVisible = viewport.scrollLeft - VIEWPORT_CULL_BUFFER_PX;
+								const maxVisible =
+									viewport.scrollLeft +
+									viewport.width +
+									VIEWPORT_CULL_BUFFER_PX;
+								if (left + width < minVisible || left > maxVisible) {
+									return null;
+								}
+							}
 
 							return (
 								<TimelineElement
