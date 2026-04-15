@@ -8,7 +8,11 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 const PROXY_HEIGHT = 540;
-const PROXY_BITRATE = "2M";
+// Intra-only proxies: every frame is a keyframe -> O(1) seek cost, backward
+// scrubbing no longer pays GOP traversal. Bitrate bumped to compensate for
+// lost inter-frame compression. Disk footprint ~3-4x vs default, but OPFS
+// quota is large and scrub perf is the primary UX metric.
+const PROXY_BITRATE = "5M";
 const PROXY_PRESET = "ultrafast";
 
 let ffmpeg: FFmpeg | null = null;
@@ -77,6 +81,16 @@ export async function generateProxy({
 		"libx264",
 		"-preset",
 		PROXY_PRESET,
+		"-tune",
+		"fastdecode",
+		"-g",
+		"1", // GOP=1 -> every frame is a keyframe
+		"-keyint_min",
+		"1",
+		"-bf",
+		"0", // no B-frames: no reordering cost during seek
+		"-pix_fmt",
+		"yuv420p", // widest browser hardware-decode support
 		"-b:v",
 		PROXY_BITRATE,
 		"-an", // strip audio — handled separately by audio pipeline
