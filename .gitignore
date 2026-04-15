@@ -72,3 +72,12 @@ docs/journals
 logs.txt
 test-ck
 .mcp.json
+
+# test & dev artifacts
+.test-media/
+.playwright-mcp/
+.content-collections/
+apps/web/.content-collections/
+/*.png
+.claude/active-plan
+scripts/visual-test/
