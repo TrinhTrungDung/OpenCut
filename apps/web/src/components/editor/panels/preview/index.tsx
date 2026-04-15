@@ -215,13 +215,18 @@ function PreviewCanvas({
 	}, [isPlaying]);
 
 	// Re-render when video element finishes seeking (shows exact pause frame)
+	// and when a playing video presents a new frame (rVFC — avoids stale composites
+	// when rAF fires before the <video> has painted its next frame).
 	useEffect(() => {
-		const handleSeeked = () => {
+		const invalidate = () => {
 			lastFrameRef.current = -1;
 		};
-		// Listen for seek events from video elements — dispatched by the pool
-		window.addEventListener("video-seeked", handleSeeked);
-		return () => window.removeEventListener("video-seeked", handleSeeked);
+		window.addEventListener("video-seeked", invalidate);
+		window.addEventListener("video-frame-presented", invalidate);
+		return () => {
+			window.removeEventListener("video-seeked", invalidate);
+			window.removeEventListener("video-frame-presented", invalidate);
+		};
 	}, []);
 
 	const render = useCallback(() => {
