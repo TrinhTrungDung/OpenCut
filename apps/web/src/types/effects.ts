@@ -58,7 +58,18 @@ export interface WebGLEffectRenderer {
 	passes: WebGLEffectPass[];
 }
 
-export type EffectRenderer = WebGLEffectRenderer;
+/** Custom renderer that gets full canvas access for effects needing external processing (e.g. MediaPipe segmentation) */
+export interface CustomEffectRenderer {
+	type: "custom";
+	process(params: {
+		source: CanvasImageSource;
+		width: number;
+		height: number;
+		effectParams: EffectParamValues;
+	}): Promise<CanvasImageSource>;
+}
+
+export type EffectRenderer = WebGLEffectRenderer | CustomEffectRenderer;
 
 export interface EffectDefinition {
 	type: string;

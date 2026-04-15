@@ -13,7 +13,19 @@ interface PoolEntry {
 	lastSeekTime: number;
 	/** Queued seek time while a previous seek is in-flight */
 	pendingSeekTime: number | null;
+	/** In-flight requestVideoFrameCallback handle (undefined when rVFC not active) */
+	rvfcHandle: number | null;
 }
+
+/**
+ * rVFC fires once per presented video frame — strictly more accurate than
+ * rAF for composite timing, because rAF may fire before the <video> has
+ * actually painted its next frame (yielding a stale canvas capture).
+ *
+ * We dispatch a single global event and let the preview canvas listen; the
+ * canvas invalidates its frame cache and re-composites on the next tick.
+ */
+const VIDEO_FRAME_EVENT = "video-frame-presented";
 
 class VideoElementPool {
 	private pool = new Map<string, PoolEntry>();
@@ -69,8 +81,47 @@ class VideoElementPool {
 			file,
 			lastSeekTime: -1,
 			pendingSeekTime: null,
+			rvfcHandle: null,
 		});
+
+		// Start the rVFC chain whenever the element begins playing (native or programmatic)
+		// and stop it on pause/end to avoid wasted work when the clip is off-range.
+		const handlePlay = () => this.startRvfcLoop(elementId);
+		const handlePauseOrEnd = () => this.stopRvfcLoop(elementId);
+		el.addEventListener("play", handlePlay);
+		el.addEventListener("playing", handlePlay);
+		el.addEventListener("pause", handlePauseOrEnd);
+		el.addEventListener("ended", handlePauseOrEnd);
 		return el;
+	}
+
+	private startRvfcLoop(elementId: string): void {
+		const entry = this.pool.get(elementId);
+		if (!entry) return;
+		if (entry.rvfcHandle != null) return;
+		const { element } = entry;
+		if (typeof element.requestVideoFrameCallback !== "function") return;
+
+		const tick: VideoFrameRequestCallback = () => {
+			const live = this.pool.get(elementId);
+			if (!live) return;
+			window.dispatchEvent(new Event(VIDEO_FRAME_EVENT));
+			if (!live.element.paused && !live.element.ended) {
+				live.rvfcHandle = live.element.requestVideoFrameCallback(tick);
+			} else {
+				live.rvfcHandle = null;
+			}
+		};
+		entry.rvfcHandle = element.requestVideoFrameCallback(tick);
+	}
+
+	private stopRvfcLoop(elementId: string): void {
+		const entry = this.pool.get(elementId);
+		if (!entry || entry.rvfcHandle == null) return;
+		if (typeof entry.element.cancelVideoFrameCallback === "function") {
+			entry.element.cancelVideoFrameCallback(entry.rvfcHandle);
+		}
+		entry.rvfcHandle = null;
 	}
 
 	/**
@@ -129,6 +180,7 @@ class VideoElementPool {
 		const entry = this.pool.get(elementId);
 		if (!entry) return;
 
+		this.stopRvfcLoop(elementId);
 		entry.element.pause();
 		entry.element.removeAttribute("src");
 		entry.element.load();
