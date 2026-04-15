@@ -12,6 +12,7 @@ import { useEditorActions } from "@/hooks/actions/use-editor-actions";
 import { useAIActions } from "@/hooks/actions/use-ai-actions";
 import { useCreatorActions } from "@/hooks/actions/use-creator-actions";
 import { prefetchFontAtlas } from "@/lib/fonts/google-fonts";
+import { attachSeekLatencyProbe, detachSeekLatencyProbe } from "@/lib/perf";
 import { SmartReframeDialog } from "@/components/editor/dialogs/smart-reframe-dialog";
 
 interface EditorProviderProps {
@@ -34,6 +35,11 @@ export function EditorProvider({ projectId, children }: EditorProviderProps) {
 			enableKeybindings();
 		}
 	}, [isLoading, disableKeybindings, enableKeybindings]);
+
+	useEffect(() => {
+		attachSeekLatencyProbe();
+		return () => detachSeekLatencyProbe();
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;

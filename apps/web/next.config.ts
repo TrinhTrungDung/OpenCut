@@ -17,6 +17,19 @@ const nextConfig: NextConfig = {
 	reactStrictMode: true,
 	productionBrowserSourceMaps: true,
 	output: "standalone",
+	// COEP probe (credentialless) — inert until FFmpeg core-mt / SharedArrayBuffer lands.
+	// Scoped to /editor so marketing/project pages stay unaffected by cross-origin restrictions.
+	async headers() {
+		return [
+			{
+				source: "/editor/:path*",
+				headers: [
+					{ key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+					{ key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+				],
+			},
+		];
+	},
 	images: {
 		remotePatterns: [
 			{
